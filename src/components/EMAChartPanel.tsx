@@ -17,28 +17,7 @@ interface Props {
   warning: string | null;
 }
 
-type CamarillaLevelMeta = {
-  key: string;
-  label: string;
-  color: string;
-  compute: (high: number, low: number, close: number) => number;
-};
-
-const CAMARILLA_LEVELS: CamarillaLevelMeta[] = [
-  { key: "H5", label: "H5", color: "#c2255c", compute: (high, low, close) => (high / low) * close },
-  { key: "H4", label: "H4", color: "#d9480f", compute: (high, low, close) => close + ((high - low) * 1.1) / 2 },
-  { key: "H3", label: "H3", color: "#f08c00", compute: (high, low, close) => close + ((high - low) * 1.1) / 4 },
-  { key: "H2", label: "H2", color: "#fab005", compute: (high, low, close) => close + ((high - low) * 1.1) / 6 },
-  { key: "H1", label: "H1", color: "#ffd43b", compute: (high, low, close) => close + ((high - low) * 1.1) / 12 },
-  { key: "PP", label: "PP", color: "#228be6", compute: (high, low, close) => (high + low + close) / 3 },
-  { key: "L1", label: "L1", color: "#82c91e", compute: (high, low, close) => close - ((high - low) * 1.1) / 12 },
-  { key: "L2", label: "L2", color: "#40c057", compute: (high, low, close) => close - ((high - low) * 1.1) / 6 },
-  { key: "L3", label: "L3", color: "#12b886", compute: (high, low, close) => close - ((high - low) * 1.1) / 4 },
-  { key: "L4", label: "L4", color: "#0ca678", compute: (high, low, close) => close - ((high - low) * 1.1) / 2 },
-  { key: "L5", label: "L5", color: "#087f5b", compute: (high, low, close) => 2 * close - (high / low) * close },
-];
-
-export default function ChartPanel({
+export default function EMAChartPanel({
   symbol,
   interval,
   candles,
@@ -52,7 +31,7 @@ export default function ChartPanel({
   const seriesRef = useRef<ReturnType<
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
-  const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const emaSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -93,21 +72,28 @@ export default function ChartPanel({
       wickDownColor: "#f85149",
     });
 
-    const pivotLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
-    CAMARILLA_LEVELS.forEach((level) => {
-      pivotLines[level.key] = chart.addSeries(LineSeries, {
-        color: level.color,
-        lineWidth: 1,
-        lineStyle: 2,
-        priceLineVisible: true,
-        lastValueVisible: false,
-        title: level.label,
+    // Add EMA lines
+    const emaColors = {
+      ema20: "#f08c00",
+      ema50: "#228be6",
+      ema200: "#c2255c",
+    };
+
+    const emaLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
+    Object.entries(emaColors).forEach(([key, color]) => {
+      emaLines[key] = chart.addSeries(LineSeries, {
+        color,
+        lineWidth: 2,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        title: key.toUpperCase(),
       });
     });
 
     chartRef.current = chart;
     seriesRef.current = series;
-    pivotSeriesRef.current = pivotLines;
+    emaSeriesRef.current = emaLines;
 
     const observer = new ResizeObserver(() => {
       if (!containerRef.current) return;
@@ -123,7 +109,7 @@ export default function ChartPanel({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
-      pivotSeriesRef.current = {};
+      emaSeriesRef.current = {};
     };
   }, []);
 
@@ -136,7 +122,6 @@ export default function ChartPanel({
     }
 
     const formatted = candles.map((c) => ({
-      // Use ISO date string for day/week/month to avoid timezone offset issues
       time: toChartTime(c.time, interval),
       open: c.open,
       high: c.high,
@@ -146,33 +131,19 @@ export default function ChartPanel({
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
 
-    // Camarilla levels are derived from the previous completed candle and
-    // rendered as horizontal overlays across the visible range.
-    if (candles.length >= 2) {
-      const prev = candles[candles.length - 2];
-      const high = prev.high;
-      const low = prev.low;
-      const close = prev.close;
+    // Calculate and display EMA lines
+    const closePrices = candles.map((c) => c.close);
+    const ema20 = calculateEMA(closePrices, 20);
+    const ema50 = calculateEMA(closePrices, 50);
+    const ema200 = calculateEMA(closePrices, 200);
 
-      CAMARILLA_LEVELS.forEach((level) => {
-        const value = low > 0 ? level.compute(high, low, close) : NaN;
-        const line = pivotSeriesRef.current[level.key];
-        if (!line || !Number.isFinite(value)) {
-          line?.setData([]);
-          return;
-        }
+    const ema20Data = formatEMALine(formatted, ema20);
+    const ema50Data = formatEMALine(formatted, ema50);
+    const ema200Data = formatEMALine(formatted, ema200);
 
-        const lineData = formatted.map((point) => ({
-          time: point.time,
-          value,
-        }));
-        line.setData(lineData as Parameters<typeof line.setData>[0]);
-      });
-    } else {
-      CAMARILLA_LEVELS.forEach((level) => {
-        pivotSeriesRef.current[level.key]?.setData([]);
-      });
-    }
+    emaSeriesRef.current.ema20.setData(ema20Data as Parameters<typeof emaSeriesRef.current.ema20.setData>[0]);
+    emaSeriesRef.current.ema50.setData(ema50Data as Parameters<typeof emaSeriesRef.current.ema50.setData>[0]);
+    emaSeriesRef.current.ema200.setData(ema200Data as Parameters<typeof emaSeriesRef.current.ema200.setData>[0]);
 
     chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
@@ -193,6 +164,7 @@ export default function ChartPanel({
       <div className="chart-header">
         <span className="chart-symbol">{symbol ?? "Select a symbol"}</span>
         <span className="chart-interval-badge">{interval.toUpperCase()}</span>
+        <span className="chart-mode-badge">EMA</span>
         {fl && (
           <span className="chart-freshness" style={{ color: fl.color }}>
             ● {fl.text}
@@ -257,4 +229,53 @@ function formatAge(isoString: string): string {
   } catch {
     return "";
   }
+}
+
+function calculateEMA(values: number[], period: number): Array<number | null> {
+  if (period <= 1 || values.length === 0) {
+    return values.map((v) => v);
+  }
+
+  const out: Array<number | null> = new Array(values.length).fill(null);
+  const multiplier = 2 / (period + 1);
+  let seeded = false;
+  let prev = 0;
+
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!seeded) {
+      if (i < period - 1) {
+        continue;
+      }
+      const start = i - period + 1;
+      const seed = values.slice(start, i + 1).reduce((sum, n) => sum + n, 0) / period;
+      prev = seed;
+      out[i] = seed;
+      seeded = true;
+      continue;
+    }
+    const next = (v - prev) * multiplier + prev;
+    out[i] = next;
+    prev = next;
+  }
+
+  return out;
+}
+
+function formatEMALine(
+  candles: Array<{ time: string | UTCTimestamp; open: number; high: number; low: number; close: number }>,
+  emaValues: Array<number | null>
+): Array<{ time: string | UTCTimestamp; value: number }> {
+  const out: Array<{ time: string | UTCTimestamp; value: number }> = [];
+  for (let i = 0; i < candles.length; i++) {
+    const v = emaValues[i];
+    if (v === null || Number.isNaN(v)) {
+      continue;
+    }
+    out.push({
+      time: candles[i].time,
+      value: v,
+    });
+  }
+  return out;
 }

@@ -1,18 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "./App.css";
-import ChartPanel from "./components/ChartPanel";
+import BaseChartPanel from "./components/BaseChartPanel";
+import SRChartPanel from "./components/SRChartPanel";
+import EMAChartPanel from "./components/EMAChartPanel";
+import FibChartPanel from "./components/FibChartPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
 import { api } from "./services/tauriApi";
 import type { CandleData, Interval, WatchlistEntry } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
 
-type DetachedWindowMode = "fib" | "ema" | "sr";
+export type DetachedWindowMode = "fib" | "ema" | "sr";
+
+// Get window mode from URL if present
+const params = new URLSearchParams(window.location.search);
+const urlMode = params.get("mode") as DetachedWindowMode | null;
 
 export default function App() {
   const [view, setView] = useState<"chart" | "settings">("chart");
+  const [mode] = useState<DetachedWindowMode | null>(urlMode);
 
   const [watchlists, setWatchlists] = useState<WatchlistEntry[]>([]);
   const [selectedWatchlist, setSelectedWatchlist] = useState<string | null>(null);
@@ -55,6 +63,47 @@ export default function App() {
     }
     boot();
   }, []);
+
+  // Listen for symbol sync events in child windows
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    async function setupListener() {
+      unlisten = await listen<SymbolSyncPayload>(SYMBOL_SYNC_EVENT, (event) => {
+        const { symbol, interval: newInterval, watchlistName } = event.payload;
+        
+        // Update symbol
+        if (symbol !== selectedSymbol) {
+          setSelectedSymbol(symbol);
+        }
+        
+        // Update interval
+        if (newInterval !== interval) {
+          setInterval(newInterval);
+        }
+        
+        // Update watchlist if different
+        if (watchlistName && watchlistName !== selectedWatchlist) {
+          setSelectedWatchlist(watchlistName);
+          // Load symbols for the new watchlist
+          api.loadSymbols(watchlistName)
+            .then(setSymbols)
+            .catch(() => setSymbols([]));
+        }
+      });
+    }
+
+    // Only set up listener in child windows or when selectedSymbol is not yet set
+    if (mode || !selectedSymbol) {
+      setupListener();
+    }
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [mode, selectedSymbol, interval, selectedWatchlist]);
 
   useEffect(() => {
     if (!selectedSymbol) {
@@ -210,6 +259,30 @@ export default function App() {
     [selectedWatchlist, selectedSymbol]
   );
 
+  // Render appropriate chart panel based on mode
+  const renderChartPanel = () => {
+    const props = {
+      symbol: selectedSymbol,
+      interval,
+      candles,
+      isLoading: isLoadingChart,
+      freshness,
+      lastSync,
+      warning: chartWarning,
+    };
+
+    switch (mode) {
+      case "sr":
+        return <SRChartPanel {...props} />;
+      case "ema":
+        return <EMAChartPanel {...props} />;
+      case "fib":
+        return <FibChartPanel {...props} />;
+      default:
+        return <BaseChartPanel {...props} />;
+    }
+  };
+
   return (
     <div className="app-root">
       {view === "settings" ? (
@@ -218,15 +291,7 @@ export default function App() {
         <div className="chart-layout">
           <div className="chart-pane">
             {chartError && <div className="chart-error-banner">✗ {chartError}</div>}
-            <ChartPanel
-              symbol={selectedSymbol}
-              interval={interval}
-              candles={candles}
-              isLoading={isLoadingChart}
-              freshness={freshness}
-              lastSync={lastSync}
-              warning={chartWarning}
-            />
+            {renderChartPanel()}
           </div>
 
           <WatchlistPanel
