@@ -968,7 +968,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
- "tauri-shared-core",
  "tokio",
 ]
 
@@ -4263,10 +4262,6 @@ dependencies = [
  "windows",
  "wry",
 ]
-
-[[package]]
-name = "tauri-shared-core"
-version = "0.1.0"
 
 [[package]]
 name = "tauri-utils"

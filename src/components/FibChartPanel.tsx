@@ -15,10 +15,10 @@ type FibAnchor = {
 
 type FibDrawing = {
   id: string;
-  type: 'retracement' | 'extension';
+  type: 'retracement' | 'extension' | 'projection';
   anchorA: FibAnchor;
   anchorB: FibAnchor;
-  anchorC?: FibAnchor; // Only for extensions
+  anchorC?: FibAnchor; // Only for extensions and projections
 };
 
 const FIB_RETRACEMENT_LEVELS = [
@@ -66,7 +66,7 @@ export default function FibChartPanel({
   const manualFibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>[]>>({});
 
   const [fibDrawings, setFibDrawings] = useState<FibDrawing[]>([]);
-  const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | null>(null);
+  const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | 'projection' | null>(null);
   const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
   const [anchorB, setAnchorB] = useState<FibAnchor | null>(null);
 
@@ -176,7 +176,7 @@ export default function FibChartPanel({
         return;
       }
 
-      if (drawingMode === 'extension' && !anchorB) {
+      if ((drawingMode === 'extension' || drawingMode === 'projection') && !anchorB) {
         setAnchorB(clickedPoint);
         return;
       }
@@ -190,8 +190,8 @@ export default function FibChartPanel({
         id: `fib-${Date.now()}`,
         type: drawingMode,
         anchorA,
-        anchorB: drawingMode === 'extension' ? anchorB! : clickedPoint,
-        ...(drawingMode === 'extension' && { anchorC: clickedPoint }),
+        anchorB: (drawingMode === 'extension' || drawingMode === 'projection') ? anchorB! : clickedPoint,
+        ...((drawingMode === 'extension' || drawingMode === 'projection') && { anchorC: clickedPoint }),
       };
       const nextDrawings = [...fibDrawings, drawing];
       setFibDrawings(nextDrawings);
@@ -230,13 +230,46 @@ export default function FibChartPanel({
       });
       seriesList.push(baseLine);
 
-      const levels = drawing.type === 'extension' ? FIB_EXTENSION_LEVELS : FIB_RETRACEMENT_LEVELS;
+      const levels = (drawing.type === 'extension' || drawing.type === 'projection') ? FIB_EXTENSION_LEVELS : FIB_RETRACEMENT_LEVELS;
 
-      if (drawing.type === 'extension' && drawing.anchorC) {
+      if (drawing.type === 'projection' && drawing.anchorC) {
+        const anchorC = drawing.anchorC;
+        // For projections: A -> B defines trend, C is projection point
+        const trendRange = drawing.anchorB.price - drawing.anchorA.price;
+        const trendDuration = Math.max(Math.abs(drawing.anchorB.time - drawing.anchorA.time), 86400);
+        
+        const projStart = Math.min(drawing.anchorB.time, anchorC.time);
+        const projEnd = Math.max(drawing.anchorB.time, anchorC.time) + trendDuration;
+
+        levels.forEach((level) => {
+          const value = anchorC.price + trendRange * level.ratio;
+          const line = chart.addSeries(LineSeries, {
+            color: level.color,
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            title: `${drawing.id} ${level.label}`,
+          });
+          
+          line.setData([
+            { time: toChartTime(projStart, interval), value },
+            { time: toChartTime(projEnd, interval), value },
+          ]);
+          seriesList.push(line);
+        });
+
+        const sortedPoints = [drawing.anchorA, drawing.anchorB, drawing.anchorC].sort((a, b) => a.time - b.time);
+        baseLine.setData([
+          { time: toChartTime(sortedPoints[0].time, interval), value: sortedPoints[0].price },
+          { time: toChartTime(sortedPoints[1].time, interval), value: sortedPoints[1].price },
+          { time: toChartTime(sortedPoints[2].time, interval), value: sortedPoints[2].price },
+        ]);
+      } else if (drawing.type === 'extension' && drawing.anchorC) {
         // For extensions: A -> B defines trend, C is extension point
         const trendRange = drawing.anchorB.price - drawing.anchorA.price;
-        const extensionStart = drawing.anchorB.time;
-        const extensionEnd = drawing.anchorC.time;
+        const extensionStart = Math.min(drawing.anchorB.time, drawing.anchorC.time);
+        const extensionEnd = Math.max(drawing.anchorB.time, drawing.anchorC.time);
 
         levels.forEach((level) => {
           const value = drawing.anchorB.price + trendRange * level.ratio;
@@ -255,14 +288,18 @@ export default function FibChartPanel({
           seriesList.push(line);
         });
 
+        const sortedPoints = [drawing.anchorA, drawing.anchorB].sort((a, b) => a.time - b.time);
         baseLine.setData([
-          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
-          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+          { time: toChartTime(sortedPoints[0].time, interval), value: sortedPoints[0].price },
+          { time: toChartTime(sortedPoints[1].time, interval), value: sortedPoints[1].price },
         ]);
       } else {
         // For retracements: levels between A and B
-        const start = toChartTime(drawing.anchorA.time, interval);
-        const end = toChartTime(drawing.anchorB.time, interval);
+        const t1 = Math.min(drawing.anchorA.time, drawing.anchorB.time);
+        const t2 = Math.max(drawing.anchorA.time, drawing.anchorB.time);
+        
+        const start = toChartTime(t1, interval);
+        const end = toChartTime(t2, interval);
         const high = Math.max(drawing.anchorA.price, drawing.anchorB.price);
         const low = Math.min(drawing.anchorA.price, drawing.anchorB.price);
 
@@ -283,9 +320,10 @@ export default function FibChartPanel({
           seriesList.push(line);
         });
 
+        const sortedPoints = [drawing.anchorA, drawing.anchorB].sort((a, b) => a.time - b.time);
         baseLine.setData([
-          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
-          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+          { time: toChartTime(sortedPoints[0].time, interval), value: sortedPoints[0].price },
+          { time: toChartTime(sortedPoints[1].time, interval), value: sortedPoints[1].price },
         ]);
       }
 
@@ -385,6 +423,17 @@ export default function FibChartPanel({
         <button
           type="button"
           className="fib-action-button"
+          onClick={() => {
+            setDrawingMode(drawingMode === 'projection' ? null : 'projection');
+            setAnchorA(null);
+            setAnchorB(null);
+          }}
+        >
+          {drawingMode === 'projection' ? "Cancel fib projection" : "Draw fib projection"}
+        </button>
+        <button
+          type="button"
+          className="fib-action-button"
           onClick={handleClearDrawings}
           disabled={fibDrawings.length === 0}
         >
@@ -399,7 +448,7 @@ export default function FibChartPanel({
               : (anchorA && !anchorB
                   ? "Click the chart to place the trend end point."
                   : anchorB
-                  ? "Click the chart to place the extension point."
+                  ? `Click the chart to place the ${drawingMode} point.`
                   : "Click the chart to place the trend start point.")
             }
           </span>
@@ -415,7 +464,7 @@ export default function FibChartPanel({
                 Fib {drawing.type}: 
                 {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
                 {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
-                {drawing.type === 'extension' && drawing.anchorC && (
+                {(drawing.type === 'extension' || drawing.type === 'projection') && drawing.anchorC && (
                   <> →
                     {new Date(drawing.anchorC.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorC.price}
                   </>
