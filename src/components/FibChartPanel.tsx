@@ -226,7 +226,6 @@ export default function FibChartPanel({
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: `Fib ${drawing.type} base ${drawing.id}`,
       });
       seriesList.push(baseLine);
 
@@ -249,7 +248,6 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: `${drawing.id} ${level.label}`,
           });
           
           line.setData([
@@ -279,7 +277,6 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: `${drawing.id} ${level.label}`,
           });
           line.setData([
             { time: toChartTime(extensionStart, interval), value },
@@ -311,7 +308,6 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: `${drawing.id} ${level.label}`,
           });
           line.setData([
             { time: start, value },
