@@ -219,8 +219,6 @@ export default function SRChartPanel({
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
 
-    // Camarilla levels are derived from the previous completed candle and
-    // rendered as horizontal overlays across the visible range.
     chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
