@@ -241,7 +241,6 @@ export default function SRChartPanel({
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: `Trendline ${drawing.id}`,
       });
 
       line.setData([

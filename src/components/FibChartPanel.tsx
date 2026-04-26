@@ -69,6 +69,10 @@ export default function FibChartPanel({
   const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | 'projection' | null>(null);
   const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
   const [anchorB, setAnchorB] = useState<FibAnchor | null>(null);
+  const [movingEndpoint, setMovingEndpoint] = useState<{
+    drawingId: string;
+    anchorKey: 'anchorA' | 'anchorB' | 'anchorC';
+  } | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,7 +156,7 @@ export default function FibChartPanel({
     if (!chart) return;
 
     const handleChartClick = (param: any) => {
-      if (!drawingMode || !param.point || !param.time) {
+      if (!param.point || !param.time) {
         return;
       }
 
@@ -171,6 +175,48 @@ export default function FibChartPanel({
         price,
       };
 
+      // 1. Drop a moving endpoint
+      if (movingEndpoint) {
+        const nextDrawings = fibDrawings.map((d) => 
+          d.id === movingEndpoint.drawingId 
+            ? { ...d, [movingEndpoint.anchorKey]: clickedPoint } 
+            : d
+        );
+        setFibDrawings(nextDrawings);
+        setMovingEndpoint(null);
+        if (symbol) {
+          api.saveFibDrawings(symbol, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+        }
+        return;
+      }
+
+      // 2. Pick up an existing endpoint if not in drawing mode
+      if (!drawingMode) {
+        let clickedAnchor: { drawingId: string; anchorKey: "anchorA" | "anchorB" | "anchorC" } | null = null;
+        for (const d of fibDrawings) {
+          for (const key of ["anchorA", "anchorB", "anchorC"] as const) {
+            if (!d[key]) continue;
+            const anchor = d[key]!;
+            const timeCoord = chart.timeScale().timeToCoordinate(toChartTime(anchor.time, interval));
+            const priceCoord = seriesRef.current?.priceToCoordinate(anchor.price);
+            if (timeCoord !== null && priceCoord !== null) {
+              const dist = Math.hypot(param.point.x - (timeCoord as number), param.point.y - (priceCoord as number));
+              if (dist < 15) {
+                clickedAnchor = { drawingId: d.id, anchorKey: key };
+                break;
+              }
+            }
+          }
+          if (clickedAnchor) break;
+        }
+
+        if (clickedAnchor) {
+          setMovingEndpoint(clickedAnchor);
+        }
+        return;
+      }
+
+      // 3. Normal drawing mode
       if (!anchorA) {
         setAnchorA(clickedPoint);
         return;
@@ -205,7 +251,7 @@ export default function FibChartPanel({
     return () => {
       chart.unsubscribeClick(handleChartClick);
     };
-  }, [anchorA, anchorB, fibDrawings, drawingMode, symbol]);
+  }, [anchorA, anchorB, fibDrawings, drawingMode, symbol, interval, movingEndpoint]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -226,6 +272,8 @@ export default function FibChartPanel({
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        pointMarkersVisible: true,
+        pointMarkersRadius: 5,
       });
       seriesList.push(baseLine);
 
@@ -448,6 +496,19 @@ export default function FibChartPanel({
                   : "Click the chart to place the trend start point.")
             }
           </span>
+        )}
+        {movingEndpoint && (
+          <div className="fib-hint" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff0f6', color: '#c2255c', padding: '4px 12px', borderRadius: '4px' }}>
+            <span>Moving endpoint... Click chart to place.</span>
+            <button
+              type="button"
+              className="fib-action-button small"
+              onClick={() => setMovingEndpoint(null)}
+              style={{ margin: 0 }}
+            >
+              Cancel
+            </button>
+          </div>
         )}
       </div>
 
