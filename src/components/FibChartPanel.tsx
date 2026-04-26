@@ -15,11 +15,13 @@ type FibAnchor = {
 
 type FibDrawing = {
   id: string;
+  type: 'retracement' | 'extension';
   anchorA: FibAnchor;
   anchorB: FibAnchor;
+  anchorC?: FibAnchor; // Only for extensions
 };
 
-const FIB_LEVELS = [
+const FIB_RETRACEMENT_LEVELS = [
   { key: "fib_100", label: "100%", ratio: 0, color: "#c2255c" },
   { key: "fib_786", label: "78.6%", ratio: 0.236, color: "#d9480f" },
   { key: "fib_618", label: "61.8%", ratio: 0.382, color: "#f08c00" },
@@ -27,6 +29,14 @@ const FIB_LEVELS = [
   { key: "fib_382", label: "38.2%", ratio: 0.618, color: "#ffd43b" },
   { key: "fib_236", label: "23.6%", ratio: 0.786, color: "#40c057" },
   { key: "fib_0", label: "0%", ratio: 1, color: "#087f5b" },
+];
+
+const FIB_EXTENSION_LEVELS = [
+  { key: "fib_0", label: "0%", ratio: 0, color: "#087f5b" },
+  { key: "fib_100", label: "100%", ratio: 1, color: "#c2255c" },
+  { key: "fib_161", label: "161.8%", ratio: 1.618, color: "#d9480f" },
+  { key: "fib_261", label: "261.8%", ratio: 2.618, color: "#f08c00" },
+  { key: "fib_423", label: "423.6%", ratio: 4.236, color: "#fab005" },
 ];
 
 interface Props {
@@ -53,12 +63,12 @@ export default function FibChartPanel({
   const seriesRef = useRef<ReturnType<
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
-  const fibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
   const manualFibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>[]>>({});
 
   const [fibDrawings, setFibDrawings] = useState<FibDrawing[]>([]);
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | null>(null);
   const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
+  const [anchorB, setAnchorB] = useState<FibAnchor | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -99,32 +109,8 @@ export default function FibChartPanel({
       wickDownColor: "#f85149",
     });
 
-    // Add Fibonacci retracement lines
-    const fibLevels = [
-      { key: "fib_100", label: "100%", color: "#c2255c" },
-      { key: "fib_786", label: "78.6%", color: "#d9480f" },
-      { key: "fib_618", label: "61.8%", color: "#f08c00" },
-      { key: "fib_50", label: "50%", color: "#fab005" },
-      { key: "fib_382", label: "38.2%", color: "#ffd43b" },
-      { key: "fib_236", label: "23.6%", color: "#40c057" },
-      { key: "fib_0", label: "0%", color: "#087f5b" },
-    ];
-
-    const fibLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
-    fibLevels.forEach((level) => {
-      fibLines[level.key] = chart.addSeries(LineSeries, {
-        color: level.color,
-        lineWidth: 1,
-        lineStyle: 2,
-        priceLineVisible: true,
-        lastValueVisible: false,
-        title: level.label,
-      });
-    });
-
     chartRef.current = chart;
     seriesRef.current = series;
-    fibSeriesRef.current = fibLines;
 
     const observer = new ResizeObserver(() => {
       if (!containerRef.current) return;
@@ -140,15 +126,15 @@ export default function FibChartPanel({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
-      fibSeriesRef.current = {};
     };
   }, []);
 
   useEffect(() => {
     if (!symbol) {
       setFibDrawings([]);
+      setDrawingMode(null);
       setAnchorA(null);
-      setIsDrawingMode(false);
+      setAnchorB(null);
       return;
     }
 
@@ -166,7 +152,7 @@ export default function FibChartPanel({
     if (!chart) return;
 
     const handleChartClick = (param: any) => {
-      if (!isDrawingMode || !param.point || !param.time) {
+      if (!drawingMode || !param.point || !param.time) {
         return;
       }
 
@@ -190,6 +176,11 @@ export default function FibChartPanel({
         return;
       }
 
+      if (drawingMode === 'extension' && !anchorB) {
+        setAnchorB(clickedPoint);
+        return;
+      }
+
       const symbolValue = symbol;
       if (!symbolValue) {
         return;
@@ -197,13 +188,16 @@ export default function FibChartPanel({
 
       const drawing: FibDrawing = {
         id: `fib-${Date.now()}`,
+        type: drawingMode,
         anchorA,
-        anchorB: clickedPoint,
+        anchorB: drawingMode === 'extension' ? anchorB! : clickedPoint,
+        ...(drawingMode === 'extension' && { anchorC: clickedPoint }),
       };
       const nextDrawings = [...fibDrawings, drawing];
       setFibDrawings(nextDrawings);
       setAnchorA(null);
-      setIsDrawingMode(false);
+      setAnchorB(null);
+      setDrawingMode(null);
       api.saveFibDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
     };
 
@@ -211,7 +205,7 @@ export default function FibChartPanel({
     return () => {
       chart.unsubscribeClick(handleChartClick);
     };
-  }, [anchorA, fibDrawings, isDrawingMode, symbol]);
+  }, [anchorA, anchorB, fibDrawings, drawingMode, symbol]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -224,42 +218,76 @@ export default function FibChartPanel({
 
     fibDrawings.forEach((drawing) => {
       const seriesList: ReturnType<ReturnType<typeof createChart>["addSeries"]>[] = [];
+
+      // Base trend line
       const baseLine = chart.addSeries(LineSeries, {
         color: "#7c3aed",
         lineWidth: 2,
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: `Fib base ${drawing.id}`,
+        title: `Fib ${drawing.type} base ${drawing.id}`,
       });
       seriesList.push(baseLine);
 
-      const start = toChartTime(drawing.anchorA.time, interval);
-      const end = toChartTime(drawing.anchorB.time, interval);
-      const high = Math.max(drawing.anchorA.price, drawing.anchorB.price);
-      const low = Math.min(drawing.anchorA.price, drawing.anchorB.price);
+      const levels = drawing.type === 'extension' ? FIB_EXTENSION_LEVELS : FIB_RETRACEMENT_LEVELS;
 
-      FIB_LEVELS.forEach((level) => {
-        const value = high - (high - low) * level.ratio;
-        const line = chart.addSeries(LineSeries, {
-          color: level.color,
-          lineWidth: 1,
-          lineStyle: 2,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          title: `${drawing.id} ${level.label}`,
+      if (drawing.type === 'extension' && drawing.anchorC) {
+        // For extensions: A -> B defines trend, C is extension point
+        const trendRange = drawing.anchorB.price - drawing.anchorA.price;
+        const extensionStart = drawing.anchorB.time;
+        const extensionEnd = drawing.anchorC.time;
+
+        levels.forEach((level) => {
+          const value = drawing.anchorB.price + trendRange * level.ratio;
+          const line = chart.addSeries(LineSeries, {
+            color: level.color,
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            title: `${drawing.id} ${level.label}`,
+          });
+          line.setData([
+            { time: toChartTime(extensionStart, interval), value },
+            { time: toChartTime(extensionEnd, interval), value },
+          ]);
+          seriesList.push(line);
         });
-        line.setData([
-          { time: start, value },
-          { time: end, value },
-        ]);
-        seriesList.push(line);
-      });
 
-      baseLine.setData([
-        { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
-        { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
-      ]);
+        baseLine.setData([
+          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+        ]);
+      } else {
+        // For retracements: levels between A and B
+        const start = toChartTime(drawing.anchorA.time, interval);
+        const end = toChartTime(drawing.anchorB.time, interval);
+        const high = Math.max(drawing.anchorA.price, drawing.anchorB.price);
+        const low = Math.min(drawing.anchorA.price, drawing.anchorB.price);
+
+        levels.forEach((level) => {
+          const value = high - (high - low) * level.ratio;
+          const line = chart.addSeries(LineSeries, {
+            color: level.color,
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            title: `${drawing.id} ${level.label}`,
+          });
+          line.setData([
+            { time: start, value },
+            { time: end, value },
+          ]);
+          seriesList.push(line);
+        });
+
+        baseLine.setData([
+          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+        ]);
+      }
 
       manualFibSeriesRef.current[drawing.id] = seriesList;
     });
@@ -285,25 +313,6 @@ export default function FibChartPanel({
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
 
-    // Fibonacci retracement levels are based on the highest high and lowest low
-    // in the visible data range
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
-    const highestHigh = Math.max(...highs);
-    const lowestLow = Math.min(...lows);
-    const fibLevels = calculateFibonacciLevels(highestHigh, lowestLow);
-
-    fibLevels.forEach((fib) => {
-      const line = fibSeriesRef.current[fib.key];
-      if (!line) return;
-
-      const lineData = formatted.map((point) => ({
-        time: point.time,
-        value: fib.level,
-      }));
-      line.setData(lineData as Parameters<typeof line.setData>[0]);
-    });
-
     chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
@@ -327,8 +336,9 @@ export default function FibChartPanel({
   const handleClearDrawings = async () => {
     if (!symbol) return;
     setFibDrawings([]);
+    setDrawingMode(null);
     setAnchorA(null);
-    setIsDrawingMode(false);
+    setAnchorB(null);
     await api.clearFibDrawings(symbol);
   };
 
@@ -354,11 +364,23 @@ export default function FibChartPanel({
           type="button"
           className="fib-action-button"
           onClick={() => {
-            setIsDrawingMode((mode) => !mode);
+            setDrawingMode(drawingMode === 'retracement' ? null : 'retracement');
             setAnchorA(null);
+            setAnchorB(null);
           }}
         >
-          {isDrawingMode ? "Cancel fib drawing" : "Draw fib retracement"}
+          {drawingMode === 'retracement' ? "Cancel fib retracement" : "Draw fib retracement"}
+        </button>
+        <button
+          type="button"
+          className="fib-action-button"
+          onClick={() => {
+            setDrawingMode(drawingMode === 'extension' ? null : 'extension');
+            setAnchorA(null);
+            setAnchorB(null);
+          }}
+        >
+          {drawingMode === 'extension' ? "Cancel fib extension" : "Draw fib extension"}
         </button>
         <button
           type="button"
@@ -368,11 +390,18 @@ export default function FibChartPanel({
         >
           Clear drawings
         </button>
-        {isDrawingMode && (
+        {drawingMode && (
           <span className="fib-hint">
-            {anchorA
-              ? "Click the chart to place the end point."
-              : "Click the chart to place the start point."}
+            {drawingMode === 'retracement'
+              ? (anchorA
+                  ? "Click the chart to place the end point."
+                  : "Click the chart to place the start point.")
+              : (anchorA && !anchorB
+                  ? "Click the chart to place the trend end point."
+                  : anchorB
+                  ? "Click the chart to place the extension point."
+                  : "Click the chart to place the trend start point.")
+            }
           </span>
         )}
       </div>
@@ -383,9 +412,14 @@ export default function FibChartPanel({
           {fibDrawings.map((drawing) => (
             <div key={drawing.id} className="fib-drawing-item">
               <span>
-                Fib retracement: 
+                Fib {drawing.type}: 
                 {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
                 {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+                {drawing.type === 'extension' && drawing.anchorC && (
+                  <> →
+                    {new Date(drawing.anchorC.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorC.price}
+                  </>
+                )}
               </span>
               <button
                 type="button"
@@ -462,13 +496,19 @@ function parseFibDrawingPayload(raw: string | null): FibDrawing[] {
 
   try {
     const parsed = JSON.parse(raw);
+    let drawings: any[] = [];
+
     if (Array.isArray(parsed?.drawings)) {
-      return parsed.drawings as FibDrawing[];
+      drawings = parsed.drawings;
+    } else if (Array.isArray(parsed)) {
+      drawings = parsed;
     }
 
-    if (Array.isArray(parsed)) {
-      return parsed as FibDrawing[];
-    }
+    // Ensure backward compatibility - old drawings don't have type field
+    return drawings.map(drawing => ({
+      ...drawing,
+      type: drawing.type || 'retracement', // Default to retracement for old drawings
+    })) as FibDrawing[];
   } catch {
     // ignore invalid payload
   }
@@ -488,21 +528,4 @@ function formatAge(isoString: string): string {
   }
 }
 
-function calculateFibonacciLevels(high: number, low: number): {
-  key: string;
-  level: number;
-  percentage: string;
-  color: string;
-}[] {
-  const range = high - low;
-  
-  return [
-    { key: "fib_100", level: high, percentage: "100%", color: "#c2255c" },
-    { key: "fib_786", level: high - range * 0.236, percentage: "78.6%", color: "#d9480f" },
-    { key: "fib_618", level: high - range * 0.382, percentage: "61.8%", color: "#f08c00" },
-    { key: "fib_50", level: high - range * 0.5, percentage: "50%", color: "#fab005" },
-    { key: "fib_382", level: high - range * 0.618, percentage: "38.2%", color: "#ffd43b" },
-    { key: "fib_236", level: high - range * 0.786, percentage: "23.6%", color: "#40c057" },
-    { key: "fib_0", level: low, percentage: "0%", color: "#087f5b" },
-  ];
-}
+
