@@ -109,6 +109,7 @@ pub fn open_db() -> SqlResult<Connection> {
             watchlist_id INTEGER NOT NULL,
             symbol       TEXT    NOT NULL,
             color        TEXT,
+            tag_color    TEXT,
             FOREIGN KEY (watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
             PRIMARY KEY (watchlist_id, symbol)
         );
@@ -123,6 +124,15 @@ pub fn open_db() -> SqlResult<Connection> {
     
     if !has_color_column {
         conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN color TEXT", [])?;
+    }
+    
+    // Migration: Add tag_color column to watchlist_symbols if it doesn't exist
+    let has_tag_color_column = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('watchlist_symbols') WHERE name='tag_color'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+        
+    if !has_tag_color_column {
+        conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN tag_color TEXT", [])?;
     }
     
     Ok(conn)
@@ -436,8 +446,8 @@ pub fn save_watchlist(name: &str, symbols: &[crate::models::WatchlistSymbol]) ->
     // Insert new symbols with colors
     for symbol in symbols {
         conn.execute(
-            "INSERT INTO watchlist_symbols (watchlist_id, symbol, color) VALUES (?1, ?2, ?3)",
-            params![watchlist_id, symbol.symbol.to_uppercase(), symbol.color],
+            "INSERT INTO watchlist_symbols (watchlist_id, symbol, color, tag_color) VALUES (?1, ?2, ?3, ?4)",
+            params![watchlist_id, symbol.symbol.to_uppercase(), symbol.color, symbol.tag_color],
         ).map_err(|e| e.to_string())?;
     }
     
@@ -447,7 +457,7 @@ pub fn save_watchlist(name: &str, symbols: &[crate::models::WatchlistSymbol]) ->
 pub fn load_watchlist_symbols(watchlist_name: &str) -> Result<Vec<crate::models::WatchlistSymbol>, String> {
     let conn = open_db().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT ws.symbol, ws.color FROM watchlist_symbols ws 
+        "SELECT ws.symbol, ws.color, ws.tag_color FROM watchlist_symbols ws 
          JOIN watchlists w ON ws.watchlist_id = w.id 
          WHERE w.name = ?1 ORDER BY ws.symbol"
     ).map_err(|e| e.to_string())?;
@@ -456,6 +466,7 @@ pub fn load_watchlist_symbols(watchlist_name: &str) -> Result<Vec<crate::models:
         Ok(crate::models::WatchlistSymbol {
             symbol: row.get(0)?,
             color: row.get(1)?,
+            tag_color: row.get(2)?,
         })
     }).map_err(|e| e.to_string())?;
     
@@ -470,6 +481,17 @@ pub fn update_symbol_color(watchlist_name: &str, symbol: &str, color: Option<&st
          WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?2) 
          AND symbol = ?3",
         params![color, watchlist_name, symbol.to_uppercase()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Option<&str>) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE watchlist_symbols SET tag_color = ?1 
+         WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?2) 
+         AND symbol = ?3",
+        params![tag_color, watchlist_name, symbol.to_uppercase()],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -520,6 +542,7 @@ pub fn migrate_watchlists_to_sqlite() -> Result<(), String> {
             .map(|l| crate::models::WatchlistSymbol {
                 symbol: l.to_uppercase(),
                 color: None,
+                tag_color: None,
             })
             .collect();
         

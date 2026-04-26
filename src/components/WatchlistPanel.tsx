@@ -17,6 +17,7 @@ interface Props {
   onOpenSettings: () => void;
   onOpenWindow: (mode: DetachedWindowMode) => void;
   onUpdateSymbolColor: (symbol: string, color: string | null) => void;
+  onUpdateSymbolTagColor: (symbol: string, tagColor: string | null) => void;
 }
 
 /** Strip "EXCHANGE:" prefix for display purposes */
@@ -37,14 +38,18 @@ export default function WatchlistPanel({
   onOpenSettings,
   onOpenWindow,
   onUpdateSymbolColor,
+  onUpdateSymbolTagColor,
 }: Props) {
   const canOpenWindow = Boolean(selectedSymbol);
 
   // Color mapping for keyboard shortcuts
-  const colorMap: Record<string, string> = {
+  const statusColors: Record<string, string> = {
     'r': 'red',
-    'y': 'yellow', 
+    'y': 'yellow',
     'g': 'green',
+  };
+
+  const tagColors: Record<string, string> = {
     'v': 'violet',
     'o': 'orange',
     'b': 'blue',
@@ -54,13 +59,16 @@ export default function WatchlistPanel({
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if (!selectedSymbol) return;
-    
+
     const key = event.key.toLowerCase();
-    if (colorMap[key]) {
+    if (statusColors[key]) {
       event.preventDefault();
-      onUpdateSymbolColor(selectedSymbol, colorMap[key]);
+      onUpdateSymbolColor(selectedSymbol, statusColors[key]);
+    } else if (tagColors[key]) {
+      event.preventDefault();
+      onUpdateSymbolTagColor(selectedSymbol, tagColors[key]);
     }
-  }, [selectedSymbol, onUpdateSymbolColor]);
+  }, [selectedSymbol, onUpdateSymbolColor, onUpdateSymbolTagColor]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
@@ -153,7 +161,11 @@ export default function WatchlistPanel({
             className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
             onClick={() => onSelectSymbol(sym.symbol)}
             title={sym.symbol}
-            style={{ backgroundColor: sym.color || undefined }}
+            style={{
+              /*backgroundColor: sym.tag_color || undefined,*/
+              borderRight: sym.color ? `5px solid ${sym.color}` : undefined,
+              borderLeft: sym.tag_color ? `5px solid ${sym.tag_color}` : undefined
+            }}
           >
             {displaySymbol(sym.symbol)}
           </button>

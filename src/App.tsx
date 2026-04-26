@@ -278,6 +278,21 @@ export default function App() {
     [selectedWatchlist]
   );
 
+  const handleUpdateSymbolTagColor = useCallback(
+    async (symbol: string, tagColor: string | null) => {
+      if (!selectedWatchlist) return;
+      
+      try {
+        await api.updateSymbolTagColor(selectedWatchlist, symbol, tagColor);
+        const updatedSymbols = await api.loadSymbols(selectedWatchlist);
+        setSymbols(updatedSymbols);
+      } catch (error) {
+        console.error('Failed to update symbol tag color:', error);
+      }
+    },
+    [selectedWatchlist]
+  );
+
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -347,6 +362,7 @@ export default function App() {
             onOpenSettings={() => setView("settings")}
             onOpenWindow={handleOpenWindow}
             onUpdateSymbolColor={handleUpdateSymbolColor}
+            onUpdateSymbolTagColor={handleUpdateSymbolTagColor}
           />
         </div>
       )}

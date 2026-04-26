@@ -14,6 +14,7 @@ pub struct CandleData {
 pub struct WatchlistSymbol {
     pub symbol: String,
     pub color: Option<String>,
+    pub tag_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
