@@ -363,6 +363,7 @@ export default function App() {
             onOpenWindow={handleOpenWindow}
             onUpdateSymbolColor={handleUpdateSymbolColor}
             onUpdateSymbolTagColor={handleUpdateSymbolTagColor}
+            isDetached={Boolean(mode)}
           />
         </div>
       )}
