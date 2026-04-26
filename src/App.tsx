@@ -259,6 +259,27 @@ export default function App() {
     [selectedWatchlist, selectedSymbol]
   );
 
+  // Keyboard navigation: spacebar to next symbol
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && symbols.length > 0 && selectedSymbol) {
+        event.preventDefault(); // Prevent page scroll
+        
+        const currentIndex = symbols.indexOf(selectedSymbol);
+        if (currentIndex !== -1) {
+          const nextIndex = (currentIndex + 1) % symbols.length;
+          const nextSymbol = symbols[nextIndex];
+          handleSelectSymbol(nextSymbol);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [symbols, selectedSymbol, handleSelectSymbol]);
+
   // Render appropriate chart panel based on mode
   const renderChartPanel = () => {
     const props = {
