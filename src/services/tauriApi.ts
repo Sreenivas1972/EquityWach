@@ -4,6 +4,7 @@ import type {
   ChartDataResponse,
   FetchSettings,
   LastSelection,
+  PivotSource,
   RetentionSettings,
   SavedKiteCredentials,
   WatchlistEntry,
@@ -40,6 +41,9 @@ export const api = {
   // ── Chart data ────────────────────────────────────────────────────────────
   getChartData: (symbol: string, interval: string) =>
     invoke<ChartDataResponse>("get_chart_data", { symbol, interval }),
+
+  getPivotSource: (symbol: string, interval: string) =>
+    invoke<PivotSource | null>("get_pivot_source", { symbol, interval }),
 
   // ── Instruments ───────────────────────────────────────────────────────────
   refreshInstruments: () => invoke<number>("refresh_instruments"),

@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, FetchSettings, LastSelection, RetentionSettings};
+use models::{ChartDataResponse, FetchSettings, LastSelection, PivotSource, RetentionSettings};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -65,7 +65,10 @@ fn set_last_selection(
 async fn get_chart_data(symbol: String, interval: String) -> Result<ChartDataResponse, String> {
     kite_api::get_chart_data(&symbol, &interval).await
 }
-
+#[tauri::command]
+async fn get_pivot_source(symbol: String, interval: String) -> Result<Option<PivotSource>, String> {
+    kite_api::get_pivot_source(&symbol, &interval).await
+}
 // ─── Instruments ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -215,6 +218,7 @@ pub fn run() {
             get_last_selection,
             set_last_selection,
             get_chart_data,
+            get_pivot_source,
             refresh_instruments,
             get_instruments_count,
             get_retention_settings,

@@ -1,7 +1,8 @@
-use chrono::{Datelike, Duration, TimeZone, Utc};
+use chrono::{Datelike, Timelike, Duration, TimeZone, Utc};
 use serde::Deserialize;
+use rusqlite::params;
 
-use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo};
+use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, PivotSource};
 use crate::storage;
 
 const KITE_API_BASE: &str = "https://api.kite.trade";
@@ -190,6 +191,241 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
         last_sync: Some(storage::ts_to_rfc3339(Utc::now().timestamp())),
         warning: None,
     })
+}
+
+pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<PivotSource>, String> {
+    if interval == "month" {
+        return Ok(None);
+    }
+
+    let symbol_str = symbol.to_string();
+    let interval_str = interval.to_string();
+    let (tradingsymbol, exchange) = parse_symbol(&symbol_str);
+    let trading_sym_clone = tradingsymbol.clone();
+    let exchange_clone = exchange.clone();
+    let interval_clone = interval_str.clone();
+
+    let (cached_meta, instrument_token) = tokio::task::spawn_blocking(move || -> Result<(Option<storage::PivotMeta>, Option<u32>), String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        let pivot_type = if interval_clone == "day" { "month" } else { "quarter" };
+        let meta = storage::get_pivot_meta(&trading_sym_clone, pivot_type, &conn).map_err(|e| e.to_string())?;
+        let token = storage::lookup_instrument_token(&trading_sym_clone, &exchange_clone, &conn).map_err(|e| e.to_string())?;
+        Ok((meta, token))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let instrument_token = instrument_token.ok_or_else(|| {
+        format!(
+            "Symbol '{}' not in instruments cache. Please refresh instruments in Settings.",
+            tradingsymbol
+        )
+    })?;
+
+    let now = Utc::now();
+    let current_period_start = if interval_str == "day" {
+        month_start(now)
+    } else {
+        quarter_start(now)
+    };
+
+    let pivot_type = if interval_str == "day" { "month" } else { "quarter" };
+
+    if let Some(meta) = cached_meta {
+        if meta.period_start == current_period_start.timestamp() {
+            let draw_from = get_current_period_first_trading_day(&tradingsymbol, interval_str.as_str(), current_period_start, now).await?;
+            return Ok(Some(PivotSource {
+                high: meta.high,
+                low: meta.low,
+                close: meta.close,
+                draw_from,
+            }));
+        }
+    }
+
+    let (prev_start, prev_end) = if interval_str == "day" {
+        let current_start = month_start(now);
+        let prev_start = previous_month_start(current_start);
+        let prev_end = current_start - Duration::seconds(1);
+        (prev_start, prev_end)
+    } else {
+        let current_start = quarter_start(now);
+        let prev_start = previous_quarter_start(current_start);
+        let prev_end = current_start - Duration::seconds(1);
+        (prev_start, prev_end)
+    };
+
+    let prev_candles = load_or_fetch_day_candles(
+        &tradingsymbol,
+        instrument_token,
+        prev_start,
+        prev_end,
+    )
+    .await?;
+
+    if prev_candles.is_empty() {
+        return Err("Previous period pivot data is unavailable.".to_string());
+    }
+
+    let (high, low, close) = compute_high_low_close(&prev_candles).ok_or_else(|| {
+        "Unable to compute pivot levels from previous period data.".to_string()
+    })?;
+
+    let draw_from = get_current_period_first_trading_day(&tradingsymbol, &interval_str, current_period_start, now).await?;
+
+    let trading_sym_clone2 = tradingsymbol.clone();
+    let pivot_type_clone = pivot_type.to_string();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        storage::save_pivot_meta(
+            &trading_sym_clone2,
+            &pivot_type_clone,
+            current_period_start.timestamp(),
+            high,
+            low,
+            close,
+            &conn,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(Some(PivotSource {
+        high,
+        low,
+        close,
+        draw_from,
+    }))
+}
+
+async fn get_current_period_first_trading_day(
+    symbol: &str,
+    _interval: &str,
+    period_start: chrono::DateTime<Utc>,
+    now: chrono::DateTime<Utc>,
+) -> Result<i64, String> {
+    let end_ts = now.timestamp();
+    let start_ts = period_start.timestamp();
+    let symbol_str = symbol.to_string();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<Option<i64>, String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT timestamp FROM candles
+             WHERE symbol = ?1 AND interval = 'day' AND timestamp >= ?2 AND timestamp <= ?3
+             ORDER BY timestamp ASC
+             LIMIT 1",
+        ).map_err(|e| e.to_string())?;
+        match stmt.query_row(params![symbol_str, start_ts, end_ts], |row| row.get(0)) {
+            Ok(ts) => Ok(Some(ts)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(result.unwrap_or(start_ts))
+}
+
+fn month_start(dt: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    dt.with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
+}
+
+fn quarter_start(dt: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let quarter_month = ((dt.month() - 1) / 3) * 3 + 1;
+    dt.with_month(quarter_month).unwrap().with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
+}
+
+fn previous_month_start(current_month_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let year = current_month_start.year();
+    let month = current_month_start.month();
+    let target = if month == 1 {
+        current_month_start.with_year(year - 1).unwrap().with_month(12).unwrap()
+    } else {
+        current_month_start.with_month(month - 1).unwrap()
+    };
+    target.with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
+}
+
+fn previous_quarter_start(current_quarter_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let year = current_quarter_start.year();
+    let month = current_quarter_start.month();
+    let target = if month <= 3 {
+        current_quarter_start.with_year(year - 1).unwrap().with_month(10).unwrap()
+    } else {
+        current_quarter_start.with_month(month - 3).unwrap()
+    };
+    target.with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
+}
+
+async fn load_or_fetch_day_candles(
+    symbol: &str,
+    instrument_token: u32,
+    from: chrono::DateTime<Utc>,
+    to: chrono::DateTime<Utc>,
+) -> Result<Vec<CandleData>, String> {
+    let symbol_str = symbol.to_string();
+    let from_ts = from.timestamp();
+    let to_ts = to.timestamp();
+    let symbol_clone = symbol_str.clone();
+
+    let cached = tokio::task::spawn_blocking(move || -> Result<Vec<CandleData>, String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        storage::get_cached_candles_range(&symbol_clone, "day", from_ts, to_ts, &conn).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if !cached.is_empty() {
+        return Ok(cached);
+    }
+
+    let auth = get_auth()?;
+    let url = format!(
+        "{}/instruments/historical/{}/day",
+        KITE_API_BASE,
+        instrument_token,
+    );
+    let fetched = fetch_candles(&url, &auth.0, &auth.1, from, to).await?;
+    if fetched.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let symbol_clone2 = symbol_str.clone();
+    let fetched_clone = fetched.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        storage::upsert_candles(&symbol_clone2, "day", &fetched_clone, &conn).map_err(|e| e.to_string())?;
+        storage::update_sync_metadata(&symbol_clone2, "day", &conn).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(fetched)
+}
+
+fn compute_high_low_close(candles: &[CandleData]) -> Option<(f64, f64, f64)> {
+    let mut high = f64::MIN;
+    let mut low = f64::MAX;
+    let mut close = None;
+
+    for candle in candles {
+        if candle.high > high {
+            high = candle.high;
+        }
+        if candle.low < low {
+            low = candle.low;
+        }
+        close = Some(candle.close);
+    }
+
+    if let Some(last_close) = close {
+        Some((high, low, last_close))
+    } else {
+        None
+    }
 }
 
 // ─── HTTP helper ──────────────────────────────────────────────────────────────

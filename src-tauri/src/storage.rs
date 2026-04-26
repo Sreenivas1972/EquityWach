@@ -113,6 +113,16 @@ pub fn open_db() -> SqlResult<Connection> {
             PRIMARY KEY (watchlist_id, symbol)
         );
         CREATE INDEX IF NOT EXISTS idx_watchlist_symbols_watchlist_id ON watchlist_symbols(watchlist_id);
+        CREATE TABLE IF NOT EXISTS pivot_meta (
+            symbol       TEXT    NOT NULL,
+            pivot_type   TEXT    NOT NULL,
+            period_start INTEGER NOT NULL,
+            high         REAL    NOT NULL,
+            low          REAL    NOT NULL,
+            close        REAL    NOT NULL,
+            updated_at   INTEGER NOT NULL,
+            PRIMARY KEY (symbol, pivot_type)
+        );
         ",
     )?;
     
@@ -155,6 +165,85 @@ pub fn get_cached_candles(
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
+}
+
+pub fn get_cached_candles_range(
+    symbol: &str,
+    interval: &str,
+    start_ts: i64,
+    end_ts: i64,
+    conn: &Connection,
+) -> SqlResult<Vec<CandleData>> {
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, open, high, low, close, volume
+         FROM candles
+         WHERE symbol = ?1 AND interval = ?2 AND timestamp >= ?3 AND timestamp <= ?4
+         ORDER BY timestamp ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![symbol, interval, start_ts, end_ts], |row| {
+            Ok(CandleData {
+                time: row.get(0)?,
+                open: row.get(1)?,
+                high: row.get(2)?,
+                low: row.get(3)?,
+                close: row.get(4)?,
+                volume: row.get::<_, i64>(5)? as u64,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub struct PivotMeta {
+    pub period_start: i64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+}
+
+pub fn get_pivot_meta(
+    symbol: &str,
+    pivot_type: &str,
+    conn: &Connection,
+) -> SqlResult<Option<PivotMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT period_start, high, low, close
+         FROM pivot_meta
+         WHERE symbol = ?1 AND pivot_type = ?2",
+    )?;
+    match stmt.query_row(params![symbol, pivot_type], |row| {
+        Ok(PivotMeta {
+            period_start: row.get(0)?,
+            high: row.get(1)?,
+            low: row.get(2)?,
+            close: row.get(3)?,
+        })
+    }) {
+        Ok(meta) => Ok(Some(meta)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn save_pivot_meta(
+    symbol: &str,
+    pivot_type: &str,
+    period_start: i64,
+    high: f64,
+    low: f64,
+    close: f64,
+    conn: &Connection,
+) -> SqlResult<()> {
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT OR REPLACE INTO pivot_meta
+         (symbol, pivot_type, period_start, high, low, close, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![symbol, pivot_type, period_start, high, low, close, now],
+    )?;
+    Ok(())
 }
 
 pub fn get_latest_candle_timestamp(

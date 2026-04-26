@@ -11,6 +11,14 @@ pub struct CandleData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PivotSource {
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub draw_from: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchlistSymbol {
     pub symbol: String,
     pub color: Option<String>,

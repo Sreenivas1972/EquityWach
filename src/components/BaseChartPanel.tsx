@@ -5,7 +5,8 @@ import {
   LineSeries,
   UTCTimestamp,
 } from "lightweight-charts";
-import type { CandleData, Interval } from "../types";
+import { api } from "../services/tauriApi";
+import type { CandleData, Interval, PivotSource } from "../types";
 
 type CamarillaLevelMeta = {
   key: string;
@@ -53,6 +54,7 @@ export default function BaseChartPanel({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const pivotSourceRef = useRef<PivotSource | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -146,11 +148,19 @@ export default function BaseChartPanel({
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
 
-    if (candles.length >= 2) {
-      const prev = candles[candles.length - 2];
-      const high = prev.high;
-      const low = prev.low;
-      const close = prev.close;
+    if (interval === "month") {
+      CAMARILLA_LEVELS.forEach((level) => {
+        pivotSeriesRef.current[level.key]?.setData([]);
+      });
+      return;
+    }
+
+    if (candles.length >= 2 && pivotSourceRef.current) {
+      const pivotSrc = pivotSourceRef.current;
+      const high = pivotSrc.high;
+      const low = pivotSrc.low;
+      const close = pivotSrc.close;
+      const drawFromTs = pivotSrc.draw_from;
 
       CAMARILLA_LEVELS.forEach((level) => {
         const value = low > 0 ? level.compute(high, low, close) : NaN;
@@ -160,10 +170,15 @@ export default function BaseChartPanel({
           return;
         }
 
-        const lineData = formatted.map((point) => ({
-          time: point.time,
-          value,
-        }));
+        const lineData = formatted
+          .filter((point) => {
+            const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
+            return pointTs >= drawFromTs;
+          })
+          .map((point) => ({
+            time: point.time,
+            value,
+          }));
         line.setData(lineData as Parameters<typeof line.setData>[0]);
       });
     } else {
@@ -173,7 +188,31 @@ export default function BaseChartPanel({
     }
 
     chartRef.current?.timeScale().fitContent();
-  }, [candles, interval]);
+  }, [candles, interval, pivotSourceRef.current]);
+
+  // ── Fetch pivot source data ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!symbol || interval === "month") {
+      pivotSourceRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const ps = await api.getPivotSource(symbol, interval);
+        if (!cancelled) {
+          pivotSourceRef.current = ps;
+        }
+      } catch {
+        // Silently fail; use previous pivot source or fall back to none
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, interval]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
@@ -243,6 +282,18 @@ function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
     return `${y}-${m}-${day}`;
   }
   return ts as UTCTimestamp;
+}
+
+function parseDateString(dateStr: string): number {
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(Date.UTC(year, month, day, 0, 0, 0));
+    return d.getTime() / 1000;
+  }
+  return 0;
 }
 
 function formatAge(isoString: string): string {

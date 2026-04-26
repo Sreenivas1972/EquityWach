@@ -42,6 +42,13 @@ export interface ChartDataResponse {
   warning: string | null;
 }
 
+export interface PivotSource {
+  high: number;
+  low: number;
+  close: number;
+  draw_from: number;
+}
+
 export interface AuthStatus {
   is_authenticated: boolean;
   api_key: string | null;
