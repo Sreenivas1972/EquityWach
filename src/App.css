@@ -118,6 +118,115 @@ body {
   font-weight: 600;
 }
 
+.fib-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.fib-action-button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.fib-action-button:hover:enabled {
+  background: var(--bg-hover);
+}
+
+.fib-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fib-drawing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.fib-drawing-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sr-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.sr-action-button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sr-action-button:hover:enabled {
+  background: var(--bg-hover);
+}
+
+.sr-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sr-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.sr-drawing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sr-drawing-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sr-delete-button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  margin-left: 8px;
+}
+
+.sr-delete-button:hover {
+  color: var(--red);
+}
+
 .chart-freshness {
   font-size: 11px;
   font-weight: 500;

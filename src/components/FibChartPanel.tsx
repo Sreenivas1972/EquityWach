@@ -1,11 +1,33 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries,
   createChart,
   LineSeries,
   UTCTimestamp,
 } from "lightweight-charts";
+import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
+
+type FibAnchor = {
+  time: number;
+  price: number;
+};
+
+type FibDrawing = {
+  id: string;
+  anchorA: FibAnchor;
+  anchorB: FibAnchor;
+};
+
+const FIB_LEVELS = [
+  { key: "fib_100", label: "100%", ratio: 0, color: "#c2255c" },
+  { key: "fib_786", label: "78.6%", ratio: 0.236, color: "#d9480f" },
+  { key: "fib_618", label: "61.8%", ratio: 0.382, color: "#f08c00" },
+  { key: "fib_50", label: "50%", ratio: 0.5, color: "#fab005" },
+  { key: "fib_382", label: "38.2%", ratio: 0.618, color: "#ffd43b" },
+  { key: "fib_236", label: "23.6%", ratio: 0.786, color: "#40c057" },
+  { key: "fib_0", label: "0%", ratio: 1, color: "#087f5b" },
+];
 
 interface Props {
   symbol: string | null;
@@ -32,6 +54,11 @@ export default function FibChartPanel({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const fibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const manualFibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>[]>>({});
+
+  const [fibDrawings, setFibDrawings] = useState<FibDrawing[]>([]);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -117,6 +144,129 @@ export default function FibChartPanel({
     };
   }, []);
 
+  useEffect(() => {
+    if (!symbol) {
+      setFibDrawings([]);
+      setAnchorA(null);
+      setIsDrawingMode(false);
+      return;
+    }
+
+    api.loadFibDrawings(symbol)
+      .then((raw) => {
+        setFibDrawings(parseFibDrawingPayload(raw));
+      })
+      .catch(() => {
+        setFibDrawings([]);
+      });
+  }, [symbol]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const handleChartClick = (param: any) => {
+      if (!isDrawingMode || !param.point || !param.time) {
+        return;
+      }
+
+      const price = seriesRef.current?.coordinateToPrice(param.point.y);
+      if (price === null || price === undefined || Number.isNaN(price as number)) {
+        return;
+      }
+
+      const clickedTime = convertClickTime(param.time);
+      if (clickedTime === null) {
+        return;
+      }
+
+      const clickedPoint: FibAnchor = {
+        time: clickedTime,
+        price,
+      };
+
+      if (!anchorA) {
+        setAnchorA(clickedPoint);
+        return;
+      }
+
+      const symbolValue = symbol;
+      if (!symbolValue) {
+        return;
+      }
+
+      const drawing: FibDrawing = {
+        id: `fib-${Date.now()}`,
+        anchorA,
+        anchorB: clickedPoint,
+      };
+      const nextDrawings = [...fibDrawings, drawing];
+      setFibDrawings(nextDrawings);
+      setAnchorA(null);
+      setIsDrawingMode(false);
+      api.saveFibDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+    };
+
+    chart.subscribeClick(handleChartClick);
+    return () => {
+      chart.unsubscribeClick(handleChartClick);
+    };
+  }, [anchorA, fibDrawings, isDrawingMode, symbol]);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const chart = chartRef.current;
+
+    Object.values(manualFibSeriesRef.current).flat().forEach((series) => {
+      chart.removeSeries(series);
+    });
+    manualFibSeriesRef.current = {};
+
+    fibDrawings.forEach((drawing) => {
+      const seriesList: ReturnType<ReturnType<typeof createChart>["addSeries"]>[] = [];
+      const baseLine = chart.addSeries(LineSeries, {
+        color: "#7c3aed",
+        lineWidth: 2,
+        lineStyle: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: `Fib base ${drawing.id}`,
+      });
+      seriesList.push(baseLine);
+
+      const start = toChartTime(drawing.anchorA.time, interval);
+      const end = toChartTime(drawing.anchorB.time, interval);
+      const high = Math.max(drawing.anchorA.price, drawing.anchorB.price);
+      const low = Math.min(drawing.anchorA.price, drawing.anchorB.price);
+
+      FIB_LEVELS.forEach((level) => {
+        const value = high - (high - low) * level.ratio;
+        const line = chart.addSeries(LineSeries, {
+          color: level.color,
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          title: `${drawing.id} ${level.label}`,
+        });
+        line.setData([
+          { time: start, value },
+          { time: end, value },
+        ]);
+        seriesList.push(line);
+      });
+
+      baseLine.setData([
+        { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+        { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+      ]);
+
+      manualFibSeriesRef.current[drawing.id] = seriesList;
+    });
+
+    chart.timeScale().fitContent();
+  }, [fibDrawings, interval]);
+
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current) return;
@@ -167,6 +317,21 @@ export default function FibChartPanel({
 
   const syncAge = lastSync ? formatAge(lastSync) : null;
 
+  const handleDeleteDrawing = async (id: string) => {
+    if (!symbol) return;
+    const nextDrawings = fibDrawings.filter((drawing) => drawing.id !== id);
+    setFibDrawings(nextDrawings);
+    await api.saveFibDrawings(symbol, JSON.stringify({ drawings: nextDrawings }));
+  };
+
+  const handleClearDrawings = async () => {
+    if (!symbol) return;
+    setFibDrawings([]);
+    setAnchorA(null);
+    setIsDrawingMode(false);
+    await api.clearFibDrawings(symbol);
+  };
+
   return (
     <div className="chart-panel">
       {/* Header bar */}
@@ -183,6 +348,56 @@ export default function FibChartPanel({
           <span className="chart-sync-age">Last sync: {syncAge}</span>
         )}
       </div>
+
+      <div className="fib-controls">
+        <button
+          type="button"
+          className="fib-action-button"
+          onClick={() => {
+            setIsDrawingMode((mode) => !mode);
+            setAnchorA(null);
+          }}
+        >
+          {isDrawingMode ? "Cancel fib drawing" : "Draw fib retracement"}
+        </button>
+        <button
+          type="button"
+          className="fib-action-button"
+          onClick={handleClearDrawings}
+          disabled={fibDrawings.length === 0}
+        >
+          Clear drawings
+        </button>
+        {isDrawingMode && (
+          <span className="fib-hint">
+            {anchorA
+              ? "Click the chart to place the end point."
+              : "Click the chart to place the start point."}
+          </span>
+        )}
+      </div>
+
+      {fibDrawings.length > 0 && (
+        <div className="fib-drawing-list">
+          <strong>Saved drawings</strong>
+          {fibDrawings.map((drawing) => (
+            <div key={drawing.id} className="fib-drawing-item">
+              <span>
+                Fib retracement: 
+                {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
+                {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+              </span>
+              <button
+                type="button"
+                className="fib-action-button small"
+                onClick={() => handleDeleteDrawing(drawing.id)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Warning banner */}
       {warning && (
@@ -226,6 +441,39 @@ function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
     return `${y}-${m}-${day}`;
   }
   return ts as UTCTimestamp;
+}
+
+function convertClickTime(time: number | string): number | null {
+  if (typeof time === "number") {
+    return time;
+  }
+
+  const parsed = Date.parse(time);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return Math.floor(parsed / 1000);
+}
+
+function parseFibDrawingPayload(raw: string | null): FibDrawing[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.drawings)) {
+      return parsed.drawings as FibDrawing[];
+    }
+
+    if (Array.isArray(parsed)) {
+      return parsed as FibDrawing[];
+    }
+  } catch {
+    // ignore invalid payload
+  }
+
+  return [];
 }
 
 function formatAge(isoString: string): string {

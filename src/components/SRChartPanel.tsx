@@ -1,11 +1,45 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries,
   createChart,
   LineSeries,
   UTCTimestamp,
 } from "lightweight-charts";
+import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
+
+type TrendlineAnchor = {
+  time: number;
+  price: number;
+};
+
+type TrendlineDrawing = {
+  id: string;
+  anchorA: TrendlineAnchor;
+  anchorB: TrendlineAnchor;
+};
+
+function parseTrendlineDrawingPayload(raw: string[]): TrendlineDrawing[] {
+  if (raw.length === 0) return [];
+  try {
+    const parsed = JSON.parse(raw[0]);
+    return parsed.drawings || [];
+  } catch {
+    return [];
+  }
+}
+
+function convertClickTime(time: any): number | null {
+  if (typeof time === "string") {
+    // For day/week/month intervals, time is a date string like "2023-01-01"
+    const date = new Date(time + "T00:00:00Z");
+    return date.getTime() / 1000;
+  }
+  if (typeof time === "number") {
+    return time;
+  }
+  return null;
+}
 
 interface Props {
   symbol: string | null;
@@ -53,6 +87,11 @@ export default function SRChartPanel({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const manualTrendlineSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+
+  const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -127,6 +166,77 @@ export default function SRChartPanel({
     };
   }, []);
 
+  // ── Load trendline drawings when symbol changes ───────────────────────────
+  useEffect(() => {
+    if (!symbol) {
+      setTrendlineDrawings([]);
+      setAnchorA(null);
+      setIsDrawingMode(false);
+      return;
+    }
+
+    api.loadSrDrawings(symbol)
+      .then((raw) => {
+        setTrendlineDrawings(parseTrendlineDrawingPayload(raw));
+      })
+      .catch(() => {
+        setTrendlineDrawings([]);
+      });
+  }, [symbol]);
+
+  // ── Handle chart clicks for trendline drawing ─────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const handleChartClick = (param: any) => {
+      if (!isDrawingMode || !param.point || !param.time) {
+        return;
+      }
+
+      const price = seriesRef.current?.coordinateToPrice(param.point.y);
+      if (price === null || price === undefined || Number.isNaN(price as number)) {
+        return;
+      }
+
+      const clickedTime = convertClickTime(param.time);
+      if (clickedTime === null) {
+        return;
+      }
+
+      const clickedPoint: TrendlineAnchor = {
+        time: clickedTime,
+        price,
+      };
+
+      if (!anchorA) {
+        setAnchorA(clickedPoint);
+        return;
+      }
+
+      const symbolValue = symbol;
+      if (!symbolValue) {
+        return;
+      }
+
+      const drawing: TrendlineDrawing = {
+        id: `trendline-${Date.now()}`,
+        anchorA,
+        anchorB: clickedPoint,
+      };
+      const nextDrawings = [...trendlineDrawings, drawing];
+      setTrendlineDrawings(nextDrawings);
+      setAnchorA(null);
+      setIsDrawingMode(false);
+      api.saveSrDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+    };
+
+    chart.subscribeClick(handleChartClick);
+    return () => {
+      chart.unsubscribeClick(handleChartClick);
+    };
+  }, [anchorA, trendlineDrawings, isDrawingMode, symbol]);
+
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current) return;
@@ -176,6 +286,37 @@ export default function SRChartPanel({
     chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
+  // ── Render trendline drawings ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const chart = chartRef.current;
+
+    Object.values(manualTrendlineSeriesRef.current).flat().forEach((series) => {
+      chart.removeSeries(series);
+    });
+    manualTrendlineSeriesRef.current = {};
+
+    trendlineDrawings.forEach((drawing) => {
+      const line = chart.addSeries(LineSeries, {
+        color: "#2563eb",
+        lineWidth: 2,
+        lineStyle: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: `Trendline ${drawing.id}`,
+      });
+
+      line.setData([
+        { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+        { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+      ]);
+
+      manualTrendlineSeriesRef.current[drawing.id] = line;
+    });
+
+    chart.timeScale().fitContent();
+  }, [trendlineDrawings, interval]);
+
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
     partially_refreshed: { text: "Updated", color: "#3fb950" },
@@ -185,6 +326,21 @@ export default function SRChartPanel({
   const fl = freshness ? freshnessLabel[freshness] : null;
 
   const syncAge = lastSync ? formatAge(lastSync) : null;
+
+  const handleDeleteDrawing = async (id: string) => {
+    if (!symbol) return;
+    const nextDrawings = trendlineDrawings.filter((drawing) => drawing.id !== id);
+    setTrendlineDrawings(nextDrawings);
+    await api.saveSrDrawings(symbol, JSON.stringify({ drawings: nextDrawings }));
+  };
+
+  const handleClearDrawings = async () => {
+    if (!symbol) return;
+    setTrendlineDrawings([]);
+    setAnchorA(null);
+    setIsDrawingMode(false);
+    await api.clearSrDrawings(symbol);
+  };
 
   return (
     <div className="chart-panel">
@@ -207,6 +363,56 @@ export default function SRChartPanel({
       {warning && (
         <div className="chart-warning">
           ⚠ {warning}
+        </div>
+      )}
+
+      <div className="sr-controls">
+        <button
+          type="button"
+          className="sr-action-button"
+          onClick={() => {
+            setIsDrawingMode((mode) => !mode);
+            setAnchorA(null);
+          }}
+        >
+          {isDrawingMode ? "Cancel trendline" : "Draw trendline"}
+        </button>
+        <button
+          type="button"
+          className="sr-action-button"
+          onClick={handleClearDrawings}
+          disabled={trendlineDrawings.length === 0}
+        >
+          Clear drawings
+        </button>
+        {isDrawingMode && (
+          <span className="sr-hint">
+            {anchorA
+              ? "Click the chart to place the second trendline anchor."
+              : "Click the chart to place the first trendline anchor."}
+          </span>
+        )}
+      </div>
+
+      {trendlineDrawings.length > 0 && (
+        <div className="sr-drawing-list">
+          <strong>Saved trendlines</strong>
+          {trendlineDrawings.map((drawing) => (
+            <div key={drawing.id} className="sr-drawing-item">
+              <span>
+                Trendline: 
+                {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
+                {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+              </span>
+              <button
+                type="button"
+                className="sr-delete-button"
+                onClick={() => handleDeleteDrawing(drawing.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
