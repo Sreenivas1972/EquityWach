@@ -9,7 +9,7 @@ import FibChartPanel from "./components/FibChartPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
 import { api } from "./services/tauriApi";
-import type { CandleData, Interval, WatchlistEntry } from "./types";
+import type { CandleData, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
 
 export type DetachedWindowMode = "fib" | "ema" | "sr";
@@ -24,7 +24,7 @@ export default function App() {
 
   const [watchlists, setWatchlists] = useState<WatchlistEntry[]>([]);
   const [selectedWatchlist, setSelectedWatchlist] = useState<string | null>(null);
-  const [symbols, setSymbols] = useState<string[]>([]);
+  const [symbols, setSymbols] = useState<WatchlistSymbol[]>([]);
   const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -39,6 +39,9 @@ export default function App() {
   useEffect(() => {
     async function boot() {
       try {
+        // Migrate watchlists from JSON/CSV to SQLite if needed
+        await api.migrateWatchlists().catch(() => {}); // Ignore errors, migration is optional
+        
         const [lists, sel] = await Promise.all([
           api.listWatchlists(),
           api.getLastSelection(),
@@ -51,9 +54,9 @@ export default function App() {
 
         if (sel.watchlist_name && lists.some((w) => w.name === sel.watchlist_name)) {
           setSelectedWatchlist(sel.watchlist_name);
-          const syms: string[] = await api.loadSymbols(sel.watchlist_name).catch(() => []);
+          const syms: WatchlistSymbol[] = await api.loadSymbols(sel.watchlist_name).catch(() => []);
           setSymbols(syms);
-          if (sel.symbol && syms.includes(sel.symbol)) {
+          if (sel.symbol && syms.some(s => s.symbol === sel.symbol)) {
             setSelectedSymbol(sel.symbol);
           }
         }
@@ -259,16 +262,32 @@ export default function App() {
     [selectedWatchlist, selectedSymbol]
   );
 
+  const handleUpdateSymbolColor = useCallback(
+    async (symbol: string, color: string | null) => {
+      if (!selectedWatchlist) return;
+      
+      try {
+        await api.updateSymbolColor(selectedWatchlist, symbol, color);
+        // Reload symbols to get updated colors
+        const updatedSymbols = await api.loadSymbols(selectedWatchlist);
+        setSymbols(updatedSymbols);
+      } catch (error) {
+        console.error('Failed to update symbol color:', error);
+      }
+    },
+    [selectedWatchlist]
+  );
+
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'Space' && symbols.length > 0 && selectedSymbol) {
         event.preventDefault(); // Prevent page scroll
         
-        const currentIndex = symbols.indexOf(selectedSymbol);
+        const currentIndex = symbols.findIndex(s => s.symbol === selectedSymbol);
         if (currentIndex !== -1) {
           const nextIndex = (currentIndex + 1) % symbols.length;
-          const nextSymbol = symbols[nextIndex];
+          const nextSymbol = symbols[nextIndex].symbol;
           handleSelectSymbol(nextSymbol);
         }
       }
@@ -327,6 +346,7 @@ export default function App() {
             onIntervalChange={handleIntervalChange}
             onOpenSettings={() => setView("settings")}
             onOpenWindow={handleOpenWindow}
+            onUpdateSymbolColor={handleUpdateSymbolColor}
           />
         </div>
       )}

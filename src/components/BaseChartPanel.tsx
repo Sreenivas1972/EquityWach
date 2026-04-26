@@ -2,9 +2,31 @@ import { useEffect, useRef } from "react";
 import {
   CandlestickSeries,
   createChart,
+  LineSeries,
   UTCTimestamp,
 } from "lightweight-charts";
 import type { CandleData, Interval } from "../types";
+
+type CamarillaLevelMeta = {
+  key: string;
+  label: string;
+  color: string;
+  compute: (high: number, low: number, close: number) => number;
+};
+
+const CAMARILLA_LEVELS: CamarillaLevelMeta[] = [
+  { key: "H5", label: "H5", color: "#c2255c", compute: (high, low, close) => (high / low) * close },
+  { key: "H4", label: "H4", color: "#d9480f", compute: (high, low, close) => close + ((high - low) * 1.1) / 2 },
+  { key: "H3", label: "H3", color: "#f08c00", compute: (high, low, close) => close + ((high - low) * 1.1) / 4 },
+  { key: "H2", label: "H2", color: "#fab005", compute: (high, low, close) => close + ((high - low) * 1.1) / 6 },
+  { key: "H1", label: "H1", color: "#ffd43b", compute: (high, low, close) => close + ((high - low) * 1.1) / 12 },
+  { key: "PP", label: "PP", color: "#228be6", compute: (high, low, close) => (high + low + close) / 3 },
+  { key: "L1", label: "L1", color: "#82c91e", compute: (high, low, close) => close - ((high - low) * 1.1) / 12 },
+  { key: "L2", label: "L2", color: "#40c057", compute: (high, low, close) => close - ((high - low) * 1.1) / 6 },
+  { key: "L3", label: "L3", color: "#12b886", compute: (high, low, close) => close - ((high - low) * 1.1) / 4 },
+  { key: "L4", label: "L4", color: "#0ca678", compute: (high, low, close) => close - ((high - low) * 1.1) / 2 },
+  { key: "L5", label: "L5", color: "#087f5b", compute: (high, low, close) => 2 * close - (high / low) * close },
+];
 
 interface Props {
   symbol: string | null;
@@ -30,6 +52,7 @@ export default function BaseChartPanel({
   const seriesRef = useRef<ReturnType<
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
+  const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -70,8 +93,21 @@ export default function BaseChartPanel({
       wickDownColor: "#f85149",
     });
 
+    const pivotLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
+    CAMARILLA_LEVELS.forEach((level) => {
+      pivotLines[level.key] = chart.addSeries(LineSeries, {
+        color: level.color,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: true,
+        lastValueVisible: false,
+        title: level.label,
+      });
+    });
+
     chartRef.current = chart;
     seriesRef.current = series;
+    pivotSeriesRef.current = pivotLines;
 
     const observer = new ResizeObserver(() => {
       if (!containerRef.current) return;
@@ -87,6 +123,7 @@ export default function BaseChartPanel({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      pivotSeriesRef.current = {};
     };
   }, []);
 
@@ -108,6 +145,33 @@ export default function BaseChartPanel({
     }));
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
+
+    if (candles.length >= 2) {
+      const prev = candles[candles.length - 2];
+      const high = prev.high;
+      const low = prev.low;
+      const close = prev.close;
+
+      CAMARILLA_LEVELS.forEach((level) => {
+        const value = low > 0 ? level.compute(high, low, close) : NaN;
+        const line = pivotSeriesRef.current[level.key];
+        if (!line || !Number.isFinite(value)) {
+          line?.setData([]);
+          return;
+        }
+
+        const lineData = formatted.map((point) => ({
+          time: point.time,
+          value,
+        }));
+        line.setData(lineData as Parameters<typeof line.setData>[0]);
+      });
+    } else {
+      CAMARILLA_LEVELS.forEach((level) => {
+        pivotSeriesRef.current[level.key]?.setData([]);
+      });
+    }
+
     chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 

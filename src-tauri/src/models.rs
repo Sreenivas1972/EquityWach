@@ -11,9 +11,14 @@ pub struct CandleData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistSymbol {
+    pub symbol: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchlistEntry {
     pub name: String,
-    pub file_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

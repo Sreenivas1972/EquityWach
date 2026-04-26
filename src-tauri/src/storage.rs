@@ -97,8 +97,34 @@ pub fn open_db() -> SqlResult<Connection> {
             PRIMARY KEY (id, symbol)
         );
         CREATE INDEX IF NOT EXISTS idx_fib_symbol ON fib_drawings(symbol);
+        
+        -- Watchlist storage tables
+        CREATE TABLE IF NOT EXISTS watchlists (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT    NOT NULL UNIQUE,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS watchlist_symbols (
+            watchlist_id INTEGER NOT NULL,
+            symbol       TEXT    NOT NULL,
+            color        TEXT,
+            FOREIGN KEY (watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
+            PRIMARY KEY (watchlist_id, symbol)
+        );
+        CREATE INDEX IF NOT EXISTS idx_watchlist_symbols_watchlist_id ON watchlist_symbols(watchlist_id);
         ",
     )?;
+    
+    // Migration: Add color column to watchlist_symbols if it doesn't exist
+    let has_color_column = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('watchlist_symbols') WHERE name='color'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+    
+    if !has_color_column {
+        conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN color TEXT", [])?;
+    }
+    
     Ok(conn)
 }
 
@@ -373,11 +399,137 @@ pub fn save_fetch_settings(s: &FetchSettings) -> Result<(), String> {
 // ─── Watchlists ──────────────────────────────────────────────────────────────
 
 pub fn load_watchlists() -> Vec<WatchlistEntry> {
-    read_json(&watchlists_path()).unwrap_or_default()
+    let conn = open_db().unwrap();
+    let mut stmt = conn.prepare("SELECT name FROM watchlists ORDER BY name").unwrap();
+    let watchlist_iter = stmt.query_map([], |row| {
+        Ok(WatchlistEntry {
+            name: row.get(0)?,
+        })
+    }).unwrap();
+    
+    watchlist_iter.map(|w| w.unwrap()).collect()
 }
 
-pub fn save_watchlists(entries: &[WatchlistEntry]) -> Result<(), String> {
-    write_json(&watchlists_path(), entries)
+pub fn save_watchlist(name: &str, symbols: &[crate::models::WatchlistSymbol]) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+    
+    // Insert or replace watchlist
+    conn.execute(
+        "INSERT OR REPLACE INTO watchlists (name, created_at, updated_at) VALUES (?1, ?2, ?3)",
+        params![name, now, now],
+    ).map_err(|e| e.to_string())?;
+    
+    // Get watchlist id
+    let watchlist_id: i64 = conn.query_row(
+        "SELECT id FROM watchlists WHERE name = ?1",
+        params![name],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    // Delete existing symbols
+    conn.execute(
+        "DELETE FROM watchlist_symbols WHERE watchlist_id = ?1",
+        params![watchlist_id],
+    ).map_err(|e| e.to_string())?;
+    
+    // Insert new symbols with colors
+    for symbol in symbols {
+        conn.execute(
+            "INSERT INTO watchlist_symbols (watchlist_id, symbol, color) VALUES (?1, ?2, ?3)",
+            params![watchlist_id, symbol.symbol.to_uppercase(), symbol.color],
+        ).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+pub fn load_watchlist_symbols(watchlist_name: &str) -> Result<Vec<crate::models::WatchlistSymbol>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT ws.symbol, ws.color FROM watchlist_symbols ws 
+         JOIN watchlists w ON ws.watchlist_id = w.id 
+         WHERE w.name = ?1 ORDER BY ws.symbol"
+    ).map_err(|e| e.to_string())?;
+    
+    let symbol_iter = stmt.query_map(params![watchlist_name], |row| {
+        Ok(crate::models::WatchlistSymbol {
+            symbol: row.get(0)?,
+            color: row.get(1)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let symbols: Result<Vec<crate::models::WatchlistSymbol>, _> = symbol_iter.collect();
+    symbols.map_err(|e| e.to_string())
+}
+
+pub fn update_symbol_color(watchlist_name: &str, symbol: &str, color: Option<&str>) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE watchlist_symbols SET color = ?1 
+         WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?2) 
+         AND symbol = ?3",
+        params![color, watchlist_name, symbol.to_uppercase()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn remove_watchlist(name: &str) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM watchlists WHERE name = ?1",
+        params![name],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn migrate_watchlists_to_sqlite() -> Result<(), String> {
+    // Check if migration already done
+    let conn = open_db().map_err(|e| e.to_string())?;
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM watchlists",
+        [],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if count > 0 {
+        return Ok(()); // Already migrated
+    }
+    
+    // Define old watchlist entry for migration
+    #[derive(serde::Deserialize)]
+    struct OldWatchlistEntry {
+        name: String,
+        file_path: String,
+    }
+    
+    // Load old watchlists from JSON
+    let old_watchlists: Vec<OldWatchlistEntry> = read_json(&watchlists_path()).unwrap_or_default();
+    
+    for watchlist in old_watchlists {
+        // Read symbols from file
+        let content = match std::fs::read_to_string(&watchlist.file_path) {
+            Ok(c) => c,
+            Err(_) => continue, // Skip if file not found
+        };
+        
+        let symbols: Vec<crate::models::WatchlistSymbol> = content
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| crate::models::WatchlistSymbol {
+                symbol: l.to_uppercase(),
+                color: None,
+            })
+            .collect();
+        
+        if let Err(_) = save_watchlist(&watchlist.name, &symbols) {
+            // Continue with other watchlists even if one fails
+            continue;
+        }
+    }
+    
+    Ok(())
 }
 
 // ─── Last selection ──────────────────────────────────────────────────────────

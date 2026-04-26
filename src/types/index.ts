@@ -7,9 +7,13 @@ export interface CandleData {
   volume: number;
 }
 
+export interface WatchlistSymbol {
+  symbol: string;
+  color: string | null;
+}
+
 export interface WatchlistEntry {
   name: string;
-  file_path: string;
 }
 
 export interface LastSelection {

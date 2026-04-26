@@ -38,7 +38,7 @@ export default function SettingsPanel({ onClose }: Props) {
   // ── Watchlist state ───────────────────────────────────────────────────────
   const [watchlists, setWatchlists] = useState<WatchlistEntry[]>([]);
   const [newName, setNewName] = useState("");
-  const [newPath, setNewPath] = useState("");
+  const [newSymbols, setNewSymbols] = useState("");
   const [watchlistMsg, setWatchlistMsg] = useState("");
 
   // ── Instruments state ─────────────────────────────────────────────────────
@@ -157,9 +157,13 @@ export default function SettingsPanel({ onClose }: Props) {
   async function handleAddWatchlist() {
     setWatchlistMsg("");
     try {
-      await api.addWatchlist(newName.trim(), newPath.trim());
+      const symbols = newSymbols
+        .split('\n')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      await api.addWatchlist(newName.trim(), symbols);
       setNewName("");
-      setNewPath("");
+      setNewSymbols("");
       const list = await api.listWatchlists();
       setWatchlists(list);
       setWatchlistMsg(`✓ Watchlist '${newName}' added.`);
@@ -394,8 +398,7 @@ export default function SettingsPanel({ onClose }: Props) {
         <section className="settings-section">
           <h3>Watchlists</h3>
           <p className="settings-hint">
-            Each watchlist maps a name to a CSV file (one trading symbol per
-            line, e.g. <code>INFY</code> or <code>NSE:RELIANCE</code>).
+            Enter trading symbols, one per line (e.g. <code>INFY</code> or <code>NSE:RELIANCE</code>).
           </p>
 
           {watchlists.length > 0 && (
@@ -403,7 +406,6 @@ export default function SettingsPanel({ onClose }: Props) {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>File path</th>
                   <th></th>
                 </tr>
               </thead>
@@ -411,9 +413,6 @@ export default function SettingsPanel({ onClose }: Props) {
                 {watchlists.map((w) => (
                   <tr key={w.name}>
                     <td>{w.name}</td>
-                    <td className="path-cell" title={w.file_path}>
-                      {w.file_path}
-                    </td>
                     <td>
                       <button
                         className="btn-danger-sm"
@@ -438,19 +437,19 @@ export default function SettingsPanel({ onClose }: Props) {
             />
           </div>
           <div className="form-row">
-            <label>CSV file path</label>
-            <input
-              type="text"
-              value={newPath}
-              placeholder="/path/to/symbols.csv"
-              onChange={(e) => setNewPath(e.target.value)}
+            <label>Symbols (one per line)</label>
+            <textarea
+              value={newSymbols}
+              placeholder="INFY&#10;RELIANCE&#10;TCS"
+              rows={5}
+              onChange={(e) => setNewSymbols(e.target.value)}
             />
           </div>
           <div className="form-actions">
             <button
               className="btn-primary"
               onClick={handleAddWatchlist}
-              disabled={!newName || !newPath}
+              disabled={!newName || !newSymbols.trim()}
             >
               Add Watchlist
             </button>

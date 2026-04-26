@@ -15,8 +15,8 @@ fn list_watchlists() -> Vec<models::WatchlistEntry> {
 }
 
 #[tauri::command]
-fn add_watchlist(name: String, file_path: String) -> Result<(), String> {
-    watchlists::add(name, file_path)
+fn add_watchlist(name: String, symbols: Vec<String>) -> Result<(), String> {
+    watchlists::add(name, symbols)
 }
 
 #[tauri::command]
@@ -25,8 +25,18 @@ fn remove_watchlist(name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn load_symbols(watchlist_name: String) -> Result<Vec<String>, String> {
+fn load_symbols(watchlist_name: String) -> Result<Vec<models::WatchlistSymbol>, String> {
     watchlists::load_symbols(&watchlist_name)
+}
+
+#[tauri::command]
+fn update_symbol_color(watchlist_name: String, symbol: String, color: Option<String>) -> Result<(), String> {
+    watchlists::update_symbol_color(&watchlist_name, &symbol, color.as_deref())
+}
+
+#[tauri::command]
+fn migrate_watchlists() -> Result<(), String> {
+    storage::migrate_watchlists_to_sqlite()
 }
 
 // ─── Last selection ───────────────────────────────────────────────────────────
@@ -200,6 +210,8 @@ pub fn run() {
             add_watchlist,
             remove_watchlist,
             load_symbols,
+            update_symbol_color,
+            migrate_watchlists,
             get_last_selection,
             set_last_selection,
             get_chart_data,

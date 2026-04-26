@@ -7,19 +7,25 @@ import type {
   RetentionSettings,
   SavedKiteCredentials,
   WatchlistEntry,
+  WatchlistSymbol,
 } from "../types";
 
 export const api = {
   // ── Watchlists ───────────────────────────────────────────────────────────
   listWatchlists: () => invoke<WatchlistEntry[]>("list_watchlists"),
 
-  addWatchlist: (name: string, filePath: string) =>
-    invoke<void>("add_watchlist", { name, filePath }),
+  addWatchlist: (name: string, symbols: string[]) =>
+    invoke<void>("add_watchlist", { name, symbols }),
 
   removeWatchlist: (name: string) => invoke<void>("remove_watchlist", { name }),
 
   loadSymbols: (watchlistName: string) =>
-    invoke<string[]>("load_symbols", { watchlistName }),
+    invoke<WatchlistSymbol[]>("load_symbols", { watchlistName }),
+
+  updateSymbolColor: (watchlistName: string, symbol: string, color: string | null) =>
+    invoke<void>("update_symbol_color", { watchlistName, symbol, color }),
+
+  migrateWatchlists: () => invoke<void>("migrate_watchlists"),
 
   // ── Last selection ────────────────────────────────────────────────────────
   getLastSelection: () => invoke<LastSelection>("get_last_selection"),

@@ -1,4 +1,5 @@
-import type { Interval, WatchlistEntry } from "../types";
+import { useCallback, useEffect } from "react";
+import type { Interval, WatchlistEntry, WatchlistSymbol } from "../types";
 import IntervalSelector from "./IntervalSelector";
 
 type DetachedWindowMode = "fib" | "ema" | "sr";
@@ -6,7 +7,7 @@ type DetachedWindowMode = "fib" | "ema" | "sr";
 interface Props {
   watchlists: WatchlistEntry[];
   selectedWatchlist: string | null;
-  symbols: string[];
+  symbols: WatchlistSymbol[];
   selectedSymbol: string | null;
   interval: Interval;
   isLoadingSymbols: boolean;
@@ -15,6 +16,7 @@ interface Props {
   onIntervalChange: (interval: Interval) => void;
   onOpenSettings: () => void;
   onOpenWindow: (mode: DetachedWindowMode) => void;
+  onUpdateSymbolColor: (symbol: string, color: string | null) => void;
 }
 
 /** Strip "EXCHANGE:" prefix for display purposes */
@@ -34,8 +36,36 @@ export default function WatchlistPanel({
   onIntervalChange,
   onOpenSettings,
   onOpenWindow,
+  onUpdateSymbolColor,
 }: Props) {
   const canOpenWindow = Boolean(selectedSymbol);
+
+  // Color mapping for keyboard shortcuts
+  const colorMap: Record<string, string> = {
+    'r': 'red',
+    'y': 'yellow', 
+    'g': 'green',
+    'v': 'violet',
+    'o': 'orange',
+    'b': 'blue',
+    'i': 'indigo',
+    'p': 'pink',
+  };
+
+  const handleKeyPress = useCallback((event: KeyboardEvent) => {
+    if (!selectedSymbol) return;
+    
+    const key = event.key.toLowerCase();
+    if (colorMap[key]) {
+      event.preventDefault();
+      onUpdateSymbolColor(selectedSymbol, colorMap[key]);
+    }
+  }, [selectedSymbol, onUpdateSymbolColor]);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [handleKeyPress]);
 
   return (
     <div className="watchlist-panel">
@@ -119,12 +149,13 @@ export default function WatchlistPanel({
         )}
         {symbols.map((sym) => (
           <button
-            key={sym}
-            className={`symbol-item${selectedSymbol === sym ? " active" : ""}`}
-            onClick={() => onSelectSymbol(sym)}
-            title={sym}
+            key={sym.symbol}
+            className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
+            onClick={() => onSelectSymbol(sym.symbol)}
+            title={sym.symbol}
+            style={{ backgroundColor: sym.color || undefined }}
           >
-            {displaySymbol(sym)}
+            {displaySymbol(sym.symbol)}
           </button>
         ))}
       </div>
