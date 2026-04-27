@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "./App.css";
@@ -11,6 +11,40 @@ import WatchlistPanel from "./components/WatchlistPanel";
 import { api } from "./services/tauriApi";
 import type { CandleData, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
+
+// ─── Watchlist sort helpers ───────────────────────────────────────────────────
+
+export type SortMode = 'alpha' | 'color' | 'tag_color';
+
+const COLOR_RANK: Record<string, number> = {
+  red: 0,
+  yellow: 1,
+  green: 2,
+};
+
+const TAG_COLOR_RANK: Record<string, number> = {
+  violet: 0,
+  indigo: 1,
+  blue: 2,
+  orange: 3,
+  pink: 4,
+};
+
+function sortSymbols(syms: WatchlistSymbol[], mode: SortMode): WatchlistSymbol[] {
+  return [...syms].sort((a, b) => {
+    if (mode === 'color') {
+      const cA = a.color ? (COLOR_RANK[a.color] ?? 98) : 99;
+      const cB = b.color ? (COLOR_RANK[b.color] ?? 98) : 99;
+      if (cA !== cB) return cA - cB;
+    } else if (mode === 'tag_color') {
+      const tA = a.tag_color ? (TAG_COLOR_RANK[a.tag_color] ?? 98) : 99;
+      const tB = b.tag_color ? (TAG_COLOR_RANK[b.tag_color] ?? 98) : 99;
+      if (tA !== tB) return tA - tB;
+    }
+    // alpha (and tie-break for color/tag_color modes)
+    return a.symbol.localeCompare(b.symbol);
+  });
+}
 
 export type DetachedWindowMode = "fib" | "ema" | "sr";
 
@@ -26,6 +60,12 @@ export default function App() {
   const [selectedWatchlist, setSelectedWatchlist] = useState<string | null>(null);
   const [symbols, setSymbols] = useState<WatchlistSymbol[]>([]);
   const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('alpha');
+
+  const sortedSymbols = useMemo(
+    () => sortSymbols(symbols, sortMode),
+    [symbols, sortMode]
+  );
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [interval, setInterval] = useState<Interval>("day");
@@ -296,13 +336,13 @@ export default function App() {
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && symbols.length > 0 && selectedSymbol) {
+      if (event.code === 'Space' && sortedSymbols.length > 0 && selectedSymbol) {
         event.preventDefault(); // Prevent page scroll
         
-        const currentIndex = symbols.findIndex(s => s.symbol === selectedSymbol);
+        const currentIndex = sortedSymbols.findIndex(s => s.symbol === selectedSymbol);
         if (currentIndex !== -1) {
-          const nextIndex = (currentIndex + 1) % symbols.length;
-          const nextSymbol = symbols[nextIndex].symbol;
+          const nextIndex = (currentIndex + 1) % sortedSymbols.length;
+          const nextSymbol = sortedSymbols[nextIndex].symbol;
           handleSelectSymbol(nextSymbol);
         }
       }
@@ -312,7 +352,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [symbols, selectedSymbol, handleSelectSymbol]);
+  }, [sortedSymbols, selectedSymbol, handleSelectSymbol]);
 
   // Render appropriate chart panel based on mode
   const renderChartPanel = () => {
@@ -352,7 +392,7 @@ export default function App() {
           <WatchlistPanel
             watchlists={watchlists}
             selectedWatchlist={selectedWatchlist}
-            symbols={symbols}
+            symbols={sortedSymbols}
             selectedSymbol={selectedSymbol}
             interval={interval}
             isLoadingSymbols={isLoadingSymbols}
@@ -364,6 +404,8 @@ export default function App() {
             onUpdateSymbolColor={handleUpdateSymbolColor}
             onUpdateSymbolTagColor={handleUpdateSymbolTagColor}
             isDetached={Boolean(mode)}
+            sortMode={sortMode}
+            onSortModeChange={setSortMode}
           />
         </div>
       )}

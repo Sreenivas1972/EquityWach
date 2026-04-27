@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Interval, WatchlistEntry, WatchlistSymbol } from "../types";
+import type { SortMode } from "../App";
 import IntervalSelector from "./IntervalSelector";
 
 type DetachedWindowMode = "fib" | "ema" | "sr";
@@ -19,6 +20,8 @@ interface Props {
   onUpdateSymbolColor: (symbol: string, color: string | null) => void;
   onUpdateSymbolTagColor: (symbol: string, tagColor: string | null) => void;
   isDetached?: boolean;
+  sortMode: SortMode;
+  onSortModeChange: (mode: SortMode) => void;
 }
 
 /** Strip "EXCHANGE:" prefix for display purposes */
@@ -41,6 +44,8 @@ export default function WatchlistPanel({
   onUpdateSymbolColor,
   onUpdateSymbolTagColor,
   isDetached = false,
+  sortMode,
+  onSortModeChange,
 }: Props) {
   const canOpenWindow = Boolean(selectedSymbol);
   const [collapsed, setCollapsed] = useState(false);
@@ -165,6 +170,34 @@ export default function WatchlistPanel({
 
           {/* Interval selector */}
           <IntervalSelector value={interval} onChange={onIntervalChange} />
+
+          {/* Sort controls */}
+          <div className="sort-controls">
+            <button
+              type="button"
+              className={`sort-btn${sortMode === 'alpha' ? ' sort-btn--active' : ''}`}
+              title="Sort alphabetically"
+              onClick={() => onSortModeChange('alpha')}
+            >
+              A–Z
+            </button>
+            <button
+              type="button"
+              className={`sort-btn${sortMode === 'color' ? ' sort-btn--active' : ''}`}
+              title="Sort by status color (red → yellow → green)"
+              onClick={() => onSortModeChange('color')}
+            >
+              🔴
+            </button>
+            <button
+              type="button"
+              className={`sort-btn${sortMode === 'tag_color' ? ' sort-btn--active' : ''}`}
+              title="Sort by tag color (violet → indigo → blue → orange → pink)"
+              onClick={() => onSortModeChange('tag_color')}
+            >
+              🏷
+            </button>
+          </div>
 
           {/* Symbol list */}
           <div className="symbol-list">

@@ -211,6 +211,11 @@ fn kite_logout() -> Result<(), String> {
 pub fn run() {
     storage::ensure_app_dir().ok();
 
+    // Prune drawings that haven't been accessed in the past 180 days
+    if let Ok(conn) = storage::open_db() {
+        storage::prune_stale_drawings(&conn).ok();
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

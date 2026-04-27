@@ -76,24 +76,26 @@ pub fn open_db() -> SqlResult<Connection> {
         
         -- Drawing storage tables
         CREATE TABLE IF NOT EXISTS sr_drawings (
-            id          TEXT    NOT NULL,
-            symbol      TEXT    NOT NULL,
-            kind        TEXT    NOT NULL,
-            data        TEXT    NOT NULL,
-            created_at  INTEGER NOT NULL,
-            updated_at  INTEGER NOT NULL,
+            id            TEXT    NOT NULL,
+            symbol        TEXT    NOT NULL,
+            kind          TEXT    NOT NULL,
+            data          TEXT    NOT NULL,
+            created_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL,
+            last_accessed INTEGER,
             PRIMARY KEY (id, symbol)
         );
         CREATE INDEX IF NOT EXISTS idx_sr_symbol ON sr_drawings(symbol);
         
         CREATE TABLE IF NOT EXISTS fib_drawings (
-            id          TEXT    NOT NULL,
-            symbol      TEXT    NOT NULL,
-            kind        TEXT    NOT NULL,
-            data        TEXT    NOT NULL,
-            defaults    TEXT,
-            created_at  INTEGER NOT NULL,
-            updated_at  INTEGER NOT NULL,
+            id            TEXT    NOT NULL,
+            symbol        TEXT    NOT NULL,
+            kind          TEXT    NOT NULL,
+            data          TEXT    NOT NULL,
+            defaults      TEXT,
+            created_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL,
+            last_accessed INTEGER,
             PRIMARY KEY (id, symbol)
         );
         CREATE INDEX IF NOT EXISTS idx_fib_symbol ON fib_drawings(symbol);
@@ -144,7 +146,29 @@ pub fn open_db() -> SqlResult<Connection> {
     if !has_tag_color_column {
         conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN tag_color TEXT", [])?;
     }
-    
+
+    // Migration: Add last_accessed to sr_drawings
+    let has_sr_last_accessed = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('sr_drawings') WHERE name='last_accessed'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+
+    if !has_sr_last_accessed {
+        conn.execute("ALTER TABLE sr_drawings ADD COLUMN last_accessed INTEGER", [])?;
+        // Backfill with updated_at so existing drawings are not immediately pruned
+        conn.execute("UPDATE sr_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
+    }
+
+    // Migration: Add last_accessed to fib_drawings
+    let has_fib_last_accessed = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('fib_drawings') WHERE name='last_accessed'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+
+    if !has_fib_last_accessed {
+        conn.execute("ALTER TABLE fib_drawings ADD COLUMN last_accessed INTEGER", [])?;
+        // Backfill with updated_at so existing drawings are not immediately pruned
+        conn.execute("UPDATE fib_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
+    }
+
     Ok(conn)
 }
 
@@ -386,12 +410,22 @@ pub fn load_sr_drawings(symbol: &str, conn: &Connection) -> SqlResult<Vec<String
     let mut stmt = conn.prepare(
         "SELECT data FROM sr_drawings WHERE symbol = ?1 ORDER BY updated_at ASC"
     )?;
-    let rows = stmt
+    let rows: Vec<String> = stmt
         .query_map(params![symbol], |row| {
             Ok(row.get::<_, String>(0)?)
         })?
         .filter_map(|r| r.ok())
         .collect();
+
+    // Stamp last_accessed so stale-drawing pruning knows this was recently used
+    if !rows.is_empty() {
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "UPDATE sr_drawings SET last_accessed = ?1 WHERE symbol = ?2",
+            params![now, symbol],
+        )?;
+    }
+
     Ok(rows)
 }
 
@@ -435,7 +469,15 @@ pub fn load_fib_drawings(symbol: &str, conn: &Connection) -> SqlResult<Option<St
             Ok((data, defaults))
         }
     ) {
-        Ok((data, _defaults)) => Ok(Some(data)),
+        Ok((data, _defaults)) => {
+            // Stamp last_accessed so stale-drawing pruning knows this was recently used
+            let now = chrono::Utc::now().timestamp();
+            conn.execute(
+                "UPDATE fib_drawings SET last_accessed = ?1 WHERE symbol = ?2",
+                params![now, symbol],
+            )?;
+            Ok(Some(data))
+        },
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
@@ -460,6 +502,23 @@ pub fn clear_fib_drawings(symbol: &str, conn: &Connection) -> SqlResult<()> {
         params![symbol],
     )?;
     Ok(())
+}
+
+/// Delete drawings that have not been accessed in the past 180 days.
+/// Uses COALESCE(last_accessed, updated_at) so rows that predate the column
+/// are judged by their last write time instead.
+pub fn prune_stale_drawings(conn: &Connection) -> SqlResult<usize> {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(180)).timestamp();
+    let mut total = 0;
+    total += conn.execute(
+        "DELETE FROM sr_drawings  WHERE COALESCE(last_accessed, updated_at) < ?1",
+        params![cutoff],
+    )?;
+    total += conn.execute(
+        "DELETE FROM fib_drawings WHERE COALESCE(last_accessed, updated_at) < ?1",
+        params![cutoff],
+    )?;
+    Ok(total)
 }
 
 // ─── JSON persistence helpers ────────────────────────────────────────────────
