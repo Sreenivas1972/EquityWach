@@ -87,8 +87,8 @@ export default function FibChartPanel({
         textColor: "#54657a",
       },
       grid: {
-        vertLines: { color: "#dfe7f1" },
-        horzLines: { color: "#dfe7f1" },
+        vertLines: { visible: false },
+        horzLines: { visible: false },
       },
       crosshair: {
         vertLine: { color: "#2563eb", width: 1, style: 2 },
@@ -274,6 +274,7 @@ export default function FibChartPanel({
         lastValueVisible: false,
         pointMarkersVisible: true,
         pointMarkersRadius: 5,
+        autoscaleInfoProvider: () => null,
       });
       seriesList.push(baseLine);
 
@@ -296,6 +297,7 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
+            autoscaleInfoProvider: () => null,
           });
           
           line.setData([
@@ -325,6 +327,7 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
+            autoscaleInfoProvider: () => null,
           });
           line.setData([
             { time: toChartTime(extensionStart, interval), value },
@@ -356,6 +359,7 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
+            autoscaleInfoProvider: () => null,
           });
           line.setData([
             { time: start, value },

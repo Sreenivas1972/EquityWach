@@ -46,8 +46,8 @@ export default function EMAChartPanel({
         textColor: "#54657a",
       },
       grid: {
-        vertLines: { color: "#dfe7f1" },
-        horzLines: { color: "#dfe7f1" },
+        vertLines: { visible: false },
+        horzLines: { visible: false },
       },
       crosshair: {
         vertLine: { color: "#2563eb", width: 1, style: 2 },
