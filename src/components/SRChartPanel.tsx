@@ -239,7 +239,9 @@ export default function SRChartPanel({
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
-        autoscaleInfoProvider: () => null,
+        autoscaleInfoProvider: () => ({
+          priceRange: null, // This series will now be ignored for autoscaling
+        }),
       });
 
       line.setData([

@@ -274,7 +274,9 @@ export default function FibChartPanel({
         lastValueVisible: false,
         pointMarkersVisible: true,
         pointMarkersRadius: 5,
-        autoscaleInfoProvider: () => null,
+        autoscaleInfoProvider: () => ({
+            priceRange: null, // This series will now be ignored for autoscaling
+        }),
       });
       seriesList.push(baseLine);
 
@@ -297,7 +299,9 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            autoscaleInfoProvider: () => null,
+            autoscaleInfoProvider: () => ({
+                priceRange: null, // This series will now be ignored for autoscaling
+            }),
           });
           
           line.setData([
@@ -327,7 +331,9 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            autoscaleInfoProvider: () => null,
+            autoscaleInfoProvider: () => ({
+              priceRange: null, // This series will now be ignored for autoscaling
+            }),
           });
           line.setData([
             { time: toChartTime(extensionStart, interval), value },
@@ -359,7 +365,9 @@ export default function FibChartPanel({
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
-            autoscaleInfoProvider: () => null,
+            autoscaleInfoProvider: () => ({
+              priceRange: null, // This series will now be ignored for autoscaling
+          }),
           });
           line.setData([
             { time: start, value },

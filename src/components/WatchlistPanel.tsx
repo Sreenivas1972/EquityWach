@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Interval, WatchlistEntry, WatchlistSymbol } from "../types";
 import type { SortMode } from "../App";
 import IntervalSelector from "./IntervalSelector";
@@ -49,6 +49,7 @@ export default function WatchlistPanel({
 }: Props) {
   const canOpenWindow = Boolean(selectedSymbol);
   const [collapsed, setCollapsed] = useState(false);
+  const symbolListRef = useRef<HTMLDivElement>(null);
 
   // Color mapping for keyboard shortcuts
   const statusColors: Record<string, string> = {
@@ -82,6 +83,19 @@ export default function WatchlistPanel({
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, [handleKeyPress]);
+
+  // Scroll selected symbol into view
+  useEffect(() => {
+    if (selectedSymbol && symbolListRef.current) {
+      const selectedElement = symbolListRef.current.querySelector(`.symbol-item.active`) as HTMLElement;
+      if (selectedElement) {
+        selectedElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [selectedSymbol]);
 
   return (
     <div className={`watchlist-panel${collapsed ? ' watchlist-panel--collapsed' : ''}`}>
@@ -200,7 +214,7 @@ export default function WatchlistPanel({
           </div>
 
           {/* Symbol list */}
-          <div className="symbol-list">
+          <div className="symbol-list" ref={symbolListRef}>
             {isLoadingSymbols && (
               <div className="symbol-list-loading">Loading symbols…</div>
             )}

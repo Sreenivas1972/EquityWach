@@ -101,9 +101,14 @@ export default function BaseChartPanel({
         color: level.color,
         lineWidth: 1,
         lineStyle: 2,
-        priceLineVisible: true,
+        priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         title: level.label,
+        autoscaleInfoProvider: () => ({
+          priceRange: null, // This series will now be ignored for autoscaling
+        }),
+
       });
     });
 
@@ -160,7 +165,7 @@ export default function BaseChartPanel({
       const high = pivotSrc.high;
       const low = pivotSrc.low;
       const close = pivotSrc.close;
-      const drawFromTs = pivotSrc.draw_from;
+      const drawFromTs = getPivotDrawFrom(interval, candles) ?? pivotSrc.draw_from;
 
       CAMARILLA_LEVELS.forEach((level) => {
         const value = low > 0 ? level.compute(high, low, close) : NaN;
@@ -200,6 +205,11 @@ export default function BaseChartPanel({
     }
 
     chartRef.current?.timeScale().fitContent();
+    chartRef.current?.applyOptions({
+      timeScale: {
+        rightOffset: 15,
+      },
+    });
   }, [candles, interval, pivotSourceRef.current]);
 
   // ── Fetch pivot source data ───────────────────────────────────────────────
@@ -284,6 +294,39 @@ export default function BaseChartPanel({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function formatAge(isoString: string): string {
+  try {
+    const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  } catch {
+    return "";
+  }
+}
+
+function getPivotDrawFrom(interval: Interval, candles: CandleData[]): number | null {
+  if (candles.length === 0) {
+    return null;
+  }
+
+  const lastTs = candles[candles.length - 1].time;
+  const lastDate = new Date(lastTs * 1000);
+  const year = lastDate.getUTCFullYear();
+
+  if (interval === "day") {
+    return Date.UTC(year, lastDate.getUTCMonth(), 1, 0, 0, 0) / 1000;
+  }
+
+  if (interval === "week") {
+    const quarterStartMonth = Math.floor(lastDate.getUTCMonth() / 3) * 3;
+    return Date.UTC(year, quarterStartMonth, 1, 0, 0, 0) / 1000;
+  }
+
+  return null;
+}
+
 function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
   // For day/week/month, use date string to sidestep timezone offsets
   if (interval === "day" || interval === "week" || interval === "month") {
@@ -314,16 +357,4 @@ function convertTimestampToDateString(ts: number): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function formatAge(isoString: string): string {
-  try {
-    const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  } catch {
-    return "";
-  }
 }
