@@ -179,6 +179,18 @@ export default function BaseChartPanel({
             time: point.time,
             value,
           }));
+
+        // Add anchor point at draw_from to prevent line extension to the left
+        if (lineData.length > 0) {
+          const firstPointTime = lineData[0].time;
+          if (typeof firstPointTime === "string" ? parseDateString(firstPointTime) > drawFromTs : firstPointTime > drawFromTs) {
+            // Insert anchor point at draw_from
+            lineData.unshift({
+              time: typeof firstPointTime === "string" ? convertTimestampToDateString(drawFromTs) : (drawFromTs as UTCTimestamp),
+              value,
+            });
+          }
+        }
         line.setData(lineData as Parameters<typeof line.setData>[0]);
       });
     } else {
@@ -294,6 +306,14 @@ function parseDateString(dateStr: string): number {
     return d.getTime() / 1000;
   }
   return 0;
+}
+
+function convertTimestampToDateString(ts: number): string {
+  const d = new Date(ts * 1000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function formatAge(isoString: string): string {
