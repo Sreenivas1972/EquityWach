@@ -26,6 +26,9 @@ export const api = {
   updateSymbolColor: (watchlistName: string, symbol: string, color: string | null) =>
     invoke<void>("update_symbol_color", { watchlistName, symbol, color }),
 
+  updateSymbolTagColor: (watchlistName: string, symbol: string, tagColor: string | null) =>
+    invoke<void>("update_symbol_tag_color", { watchlistName, symbol, tagColor }),
+
   migrateWatchlists: () => invoke<void>("migrate_watchlists"),
 
   // ── Last selection ────────────────────────────────────────────────────────

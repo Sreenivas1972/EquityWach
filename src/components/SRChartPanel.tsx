@@ -84,8 +84,8 @@ export default function SRChartPanel({
         textColor: "#54657a",
       },
       grid: {
-        vertLines: { color: "#dfe7f1" },
-        horzLines: { color: "#dfe7f1" },
+        vertLines: { visible: false },
+        horzLines: { visible: false },
       },
       crosshair: {
         vertLine: { color: "#2563eb", width: 1, style: 2 },
@@ -239,7 +239,7 @@ export default function SRChartPanel({
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: `Trendline ${drawing.id}`,
+        autoscaleInfoProvider: () => null,
       });
 
       line.setData([

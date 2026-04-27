@@ -172,6 +172,24 @@ export default function SettingsPanel({ onClose }: Props) {
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!newName) {
+      setNewName(file.name.replace(/\.[^/.]+$/, ""));
+    }
+
+    try {
+      const text = await file.text();
+      setNewSymbols(text);
+    } catch (err) {
+      setWatchlistMsg(`Error reading file: ${err}`);
+    }
+    
+    e.target.value = '';
+  };
+
   async function handleRemoveWatchlist(name: string) {
     setWatchlistMsg("");
     try {
@@ -443,6 +461,14 @@ export default function SettingsPanel({ onClose }: Props) {
               placeholder="INFY&#10;RELIANCE&#10;TCS"
               rows={5}
               onChange={(e) => setNewSymbols(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <label>Or import from file</label>
+            <input
+              type="file"
+              accept=".txt,.csv"
+              onChange={handleFileSelect}
             />
           </div>
           <div className="form-actions">

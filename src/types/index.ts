@@ -10,6 +10,7 @@ export interface CandleData {
 export interface WatchlistSymbol {
   symbol: string;
   color: string | null;
+  tag_color: string | null;
 }
 
 export interface WatchlistEntry {

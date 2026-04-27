@@ -12,7 +12,7 @@ pub fn add(name: String, symbols: Vec<String>) -> Result<(), String> {
     }
     let watchlist_symbols: Vec<WatchlistSymbol> = symbols
         .into_iter()
-        .map(|s| WatchlistSymbol { symbol: s, color: None })
+        .map(|s| WatchlistSymbol { symbol: s, color: None, tag_color: None })
         .collect();
     storage::save_watchlist(&name, &watchlist_symbols)
 }
@@ -29,4 +29,8 @@ pub fn load_symbols(watchlist_name: &str) -> Result<Vec<WatchlistSymbol>, String
 
 pub fn update_symbol_color(watchlist_name: &str, symbol: &str, color: Option<&str>) -> Result<(), String> {
     storage::update_symbol_color(watchlist_name, symbol, color)
+}
+
+pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Option<&str>) -> Result<(), String> {
+    storage::update_symbol_tag_color(watchlist_name, symbol, tag_color)
 }
