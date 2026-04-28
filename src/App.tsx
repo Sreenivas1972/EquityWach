@@ -302,6 +302,29 @@ export default function App() {
     [selectedWatchlist, selectedSymbol]
   );
 
+  const handleRefreshChartData = useCallback(async () => {
+    if (!selectedSymbol) {
+      return;
+    }
+
+    setIsLoadingChart(true);
+    setChartError(null);
+    setChartWarning(null);
+
+    try {
+      const resp = await api.refreshChartData(selectedSymbol, interval);
+      setCandles(resp.candles);
+      setFreshness(resp.freshness);
+      setLastSync(resp.last_sync ?? null);
+      setChartWarning(resp.warning ?? null);
+    } catch (e) {
+      setCandles([]);
+      setChartError(String(e));
+    } finally {
+      setIsLoadingChart(false);
+    }
+  }, [selectedSymbol, interval]);
+
   const handleUpdateSymbolColor = useCallback(
     async (symbol: string, color: string | null) => {
       if (!selectedWatchlist) return;
@@ -374,7 +397,7 @@ export default function App() {
       case "fib":
         return <FibChartPanel {...props} />;
       default:
-        return <BaseChartPanel {...props} />;
+        return <BaseChartPanel {...props} onFetch={handleRefreshChartData} />;
     }
   };
 

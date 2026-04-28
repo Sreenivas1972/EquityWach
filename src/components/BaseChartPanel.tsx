@@ -37,6 +37,7 @@ interface Props {
   freshness: string | null;
   lastSync: string | null;
   warning: string | null;
+  onFetch?: () => void;
 }
 
 export default function BaseChartPanel({
@@ -47,6 +48,7 @@ export default function BaseChartPanel({
   freshness,
   lastSync,
   warning,
+  onFetch,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
@@ -257,8 +259,20 @@ export default function BaseChartPanel({
             ● {fl.text}
           </span>
         )}
-        {syncAge && (
-          <span className="chart-sync-age">Last sync: {syncAge}</span>
+        {symbol && onFetch && (
+          <span className="chart-sync-actions">
+            <button
+              type="button"
+              className="chart-fetch-button"
+              onClick={onFetch}
+              disabled={isLoading}
+            >
+              Fetch
+            </button>
+            {syncAge && (
+              <span className="chart-sync-age">Last sync: {syncAge}</span>
+            )}
+          </span>
         )}
       </div>
 

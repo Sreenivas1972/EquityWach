@@ -193,6 +193,104 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
     })
 }
 
+pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDataResponse, String> {
+    let symbol = symbol.to_string();
+    let interval = interval.to_string();
+
+    let (tradingsymbol, exchange) = parse_symbol(&symbol);
+    let sym_clone = tradingsymbol.clone();
+    let exc_clone = exchange.clone();
+    let int_clone = interval.clone();
+
+    let (cached, _, last_sync, instrument_token) =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<u32>), String> {
+            let conn = storage::open_db().map_err(|e| e.to_string())?;
+            let cached = storage::get_cached_candles(&sym_clone, &int_clone, &conn)
+                .map_err(|e| e.to_string())?;
+            let last_sync = storage::get_last_synced(&sym_clone, &int_clone, &conn)
+                .map_err(|e| e.to_string())?;
+            let instrument_token = storage::lookup_instrument_token(&sym_clone, &exc_clone, &conn)
+                .map_err(|e| e.to_string())?;
+            Ok((cached, None, last_sync, instrument_token))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let last_sync_str = last_sync.map(storage::ts_to_rfc3339);
+
+    let auth = get_auth();
+    if auth.is_err() {
+        return serve_cached_or_error(
+            cached,
+            last_sync_str,
+            "Not authenticated. Showing cached data.",
+        );
+    }
+    let (api_key, access_token) = auth.unwrap();
+
+    let instrument_token = match instrument_token {
+        Some(t) => t,
+        None => {
+            return serve_cached_or_error(
+                cached,
+                last_sync_str,
+                &format!(
+                    "Symbol '{}' not in instruments cache. Please refresh instruments in Settings.",
+                    tradingsymbol
+                ),
+            );
+        }
+    };
+
+    let fetch_settings = tokio::task::spawn_blocking(storage::load_fetch_settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let from = fetch_from(&interval, &fetch_settings);
+    let to = Utc::now();
+
+    let url = format!(
+        "{}/instruments/historical/{}/{}",
+        KITE_API_BASE,
+        instrument_token,
+        request_interval_for_kite(&interval)
+    );
+
+    let new_candles = match fetch_candles(&url, &api_key, &access_token, from, to).await {
+        Ok(c) => normalize_interval_candles(c, &interval),
+        Err(e) => {
+            return serve_cached_or_error(
+                cached,
+                last_sync_str,
+                &format!("Network refresh failed: {}. Showing cached data.", e),
+            );
+        }
+    };
+
+    let sym2 = tradingsymbol.clone();
+    let int2 = interval.clone();
+
+    let all_candles = tokio::task::spawn_blocking(move || -> Result<Vec<CandleData>, String> {
+        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        if !new_candles.is_empty() {
+            storage::upsert_candles(&sym2, &int2, &new_candles, &conn)
+                .map_err(|e| e.to_string())?;
+            storage::update_sync_metadata(&sym2, &int2, &conn)
+                .map_err(|e| e.to_string())?;
+        }
+        storage::get_cached_candles(&sym2, &int2, &conn).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(ChartDataResponse {
+        candles: all_candles,
+        freshness: "network_fetched".to_string(),
+        last_sync: Some(storage::ts_to_rfc3339(Utc::now().timestamp())),
+        warning: None,
+    })
+}
+
 pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<PivotSource>, String> {
     if interval == "month" {
         return Ok(None);

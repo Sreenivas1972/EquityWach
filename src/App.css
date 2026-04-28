@@ -118,6 +118,32 @@ body {
   font-weight: 600;
 }
 
+.chart-sync-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chart-fetch-button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.chart-fetch-button:hover:enabled {
+  background: var(--bg-hover);
+}
+
+.chart-fetch-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .fib-controls {
   display: flex;
   align-items: center;

@@ -45,6 +45,9 @@ export const api = {
   getChartData: (symbol: string, interval: string) =>
     invoke<ChartDataResponse>("get_chart_data", { symbol, interval }),
 
+  refreshChartData: (symbol: string, interval: string) =>
+    invoke<ChartDataResponse>("refresh_chart_data", { symbol, interval }),
+
   getPivotSource: (symbol: string, interval: string) =>
     invoke<PivotSource | null>("get_pivot_source", { symbol, interval }),
 

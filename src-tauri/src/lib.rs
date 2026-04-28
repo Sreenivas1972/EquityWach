@@ -71,6 +71,10 @@ async fn get_chart_data(symbol: String, interval: String) -> Result<ChartDataRes
     kite_api::get_chart_data(&symbol, &interval).await
 }
 #[tauri::command]
+async fn refresh_chart_data(symbol: String, interval: String) -> Result<ChartDataResponse, String> {
+    kite_api::refresh_chart_data(&symbol, &interval).await
+}
+#[tauri::command]
 async fn get_pivot_source(symbol: String, interval: String) -> Result<Option<PivotSource>, String> {
     kite_api::get_pivot_source(&symbol, &interval).await
 }
@@ -229,6 +233,7 @@ pub fn run() {
             get_last_selection,
             set_last_selection,
             get_chart_data,
+            refresh_chart_data,
             get_pivot_source,
             refresh_instruments,
             get_instruments_count,
