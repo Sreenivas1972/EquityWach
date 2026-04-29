@@ -50,6 +50,11 @@ export interface PivotSource {
   draw_from: number;
 }
 
+export interface SymbolSearchResult {
+  symbol: string;
+  watchlists: string[];
+}
+
 export interface AuthStatus {
   is_authenticated: boolean;
   api_key: string | null;

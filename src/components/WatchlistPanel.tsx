@@ -67,6 +67,17 @@ export default function WatchlistPanel({
   };
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
     if (!selectedSymbol) return;
 
     const key = event.key.toLowerCase();

@@ -34,3 +34,11 @@ pub fn update_symbol_color(watchlist_name: &str, symbol: &str, color: Option<&st
 pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Option<&str>) -> Result<(), String> {
     storage::update_symbol_tag_color(watchlist_name, symbol, tag_color)
 }
+
+pub fn search_symbol(symbol: &str) -> Result<crate::models::SymbolSearchResult, String> {
+    let watchlists = storage::search_symbol_in_watchlists(symbol)?;
+    Ok(crate::models::SymbolSearchResult {
+        symbol: symbol.to_uppercase(),
+        watchlists,
+    })
+}

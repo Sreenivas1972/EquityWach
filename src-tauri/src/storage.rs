@@ -703,6 +703,25 @@ pub fn migrate_watchlists_to_sqlite() -> Result<(), String> {
     Ok(())
 }
 
+pub fn search_symbol_in_watchlists(symbol: &str) -> Result<Vec<String>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    let symbol_upper = symbol.to_uppercase();
+    
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT w.name FROM watchlists w 
+         JOIN watchlist_symbols ws ON w.id = ws.watchlist_id 
+         WHERE ws.symbol = ?1 
+         ORDER BY w.name"
+    ).map_err(|e| e.to_string())?;
+    
+    let watchlist_iter = stmt.query_map(params![symbol_upper], |row| {
+        row.get::<_, String>(0)
+    }).map_err(|e| e.to_string())?;
+    
+    let watchlists: Result<Vec<String>, _> = watchlist_iter.collect();
+    watchlists.map_err(|e| e.to_string())
+}
+
 // ─── Last selection ──────────────────────────────────────────────────────────
 
 pub fn load_last_selection() -> LastSelection {

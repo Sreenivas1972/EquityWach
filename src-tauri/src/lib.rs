@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, FetchSettings, LastSelection, PivotSource, RetentionSettings};
+use models::{ChartDataResponse, FetchSettings, LastSelection, PivotSource, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -27,6 +27,11 @@ fn remove_watchlist(name: String) -> Result<(), String> {
 #[tauri::command]
 fn load_symbols(watchlist_name: String) -> Result<Vec<models::WatchlistSymbol>, String> {
     watchlists::load_symbols(&watchlist_name)
+}
+
+#[tauri::command]
+fn search_symbol(symbol: String) -> Result<SymbolSearchResult, String> {
+    watchlists::search_symbol(&symbol)
 }
 
 #[tauri::command]
@@ -227,6 +232,7 @@ pub fn run() {
             add_watchlist,
             remove_watchlist,
             load_symbols,
+            search_symbol,
             update_symbol_color,
             update_symbol_tag_color,
             migrate_watchlists,

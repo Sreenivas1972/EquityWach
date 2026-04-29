@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries,
   createChart,
@@ -6,7 +6,7 @@ import {
   UTCTimestamp,
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
-import type { CandleData, Interval, PivotSource } from "../types";
+import type { CandleData, Interval, PivotSource, SymbolSearchResult } from "../types";
 
 type CamarillaLevelMeta = {
   key: string;
@@ -38,9 +38,10 @@ interface Props {
   lastSync: string | null;
   warning: string | null;
   onFetch?: () => void;
+  onSelectWatchlist?: (watchlistName: string, symbol: string) => void;
 }
 
-export default function BaseChartPanel({
+function BaseChartPanelComponent({
   symbol,
   interval,
   candles,
@@ -49,8 +50,49 @@ export default function BaseChartPanel({
   lastSync,
   warning,
   onFetch,
+  onSelectWatchlist,
 }: Props) {
+  const [searchInput, setSearchInput] = useState("");
+  const [searchResults, setSearchResults] = useState<SymbolSearchResult | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchInput(e.target.value);
+  }, []);
+
+  const handleSearchKeyPress = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const value = (e.currentTarget.value || "").trim();
+    if (e.key === "Enter" && value) {
+      try {
+        const results = await api.searchSymbol(value);
+        setSearchResults(results);
+        setShowSearchResults(results.watchlists.length > 0);
+      } catch {
+        setSearchResults(null);
+        setShowSearchResults(false);
+      }
+    }
+  }, []);
+
+  const handleSelectWatchlist = useCallback((watchlistName: string) => {
+    if (onSelectWatchlist && searchResults) {
+      onSelectWatchlist(watchlistName, searchResults.symbol);
+      setShowSearchResults(false);
+      setSearchInput("");
+    }
+  }, [onSelectWatchlist, searchResults]);
+
+  const handleSearchFocus = useCallback(() => {
+    if (showSearchResults && searchResults) {
+      setShowSearchResults(true);
+    }
+  }, [showSearchResults, searchResults]);
+
+  const handleSearchBlur = useCallback(() => {
+    setTimeout(() => setShowSearchResults(false), 200);
+  }, []);
+
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<ReturnType<
     ReturnType<typeof createChart>["addSeries"]
@@ -259,6 +301,31 @@ export default function BaseChartPanel({
             ● {fl.text}
           </span>
         )}
+        <div className="chart-search-container">
+          <input
+            type="text"
+            className="chart-search-input"
+            placeholder="Search symbol..."
+            value={searchInput}
+            onChange={handleSearchInputChange}
+            onKeyPress={handleSearchKeyPress}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
+          />
+          {showSearchResults && searchResults && searchResults.watchlists.length > 0 && (
+            <div className="chart-search-results">
+              {searchResults.watchlists.map((watchlistName) => (
+                <div
+                  key={watchlistName}
+                  className="chart-search-result-item"
+                  onClick={() => handleSelectWatchlist(watchlistName)}
+                >
+                  {watchlistName}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {symbol && onFetch && (
           <span className="chart-sync-actions">
             <button
@@ -305,6 +372,9 @@ export default function BaseChartPanel({
     </div>
   );
 }
+
+const BaseChartPanel = memo(BaseChartPanelComponent);
+export default BaseChartPanel;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

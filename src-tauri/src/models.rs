@@ -114,3 +114,9 @@ pub struct InstrumentInfo {
     pub exchange: String,
     pub name: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolSearchResult {
+    pub symbol: String,
+    pub watchlists: Vec<String>,
+}

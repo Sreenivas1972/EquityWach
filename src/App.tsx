@@ -356,6 +356,19 @@ export default function App() {
     [selectedWatchlist]
   );
 
+  const handleSelectFromSearch = useCallback(
+    (watchlistName: string, symbolName: string) => {
+      setSelectedWatchlist(watchlistName);
+      setSelectedSymbol(symbolName);
+      api.setLastSelection(watchlistName, symbolName, interval).catch(() => {});
+      // Load symbols for the selected watchlist
+      api.loadSymbols(watchlistName)
+        .then(setSymbols)
+        .catch(() => setSymbols([]));
+    },
+    [interval]
+  );
+
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -397,7 +410,7 @@ export default function App() {
       case "fib":
         return <FibChartPanel {...props} />;
       default:
-        return <BaseChartPanel {...props} onFetch={handleRefreshChartData} />;
+        return <BaseChartPanel {...props} onFetch={handleRefreshChartData} onSelectWatchlist={handleSelectFromSearch} />;
     }
   };
 

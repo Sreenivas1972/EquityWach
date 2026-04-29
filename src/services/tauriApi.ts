@@ -7,6 +7,7 @@ import type {
   PivotSource,
   RetentionSettings,
   SavedKiteCredentials,
+  SymbolSearchResult,
   WatchlistEntry,
   WatchlistSymbol,
 } from "../types";
@@ -22,6 +23,9 @@ export const api = {
 
   loadSymbols: (watchlistName: string) =>
     invoke<WatchlistSymbol[]>("load_symbols", { watchlistName }),
+
+  searchSymbol: (symbol: string) =>
+    invoke<SymbolSearchResult>("search_symbol", { symbol }),
 
   updateSymbolColor: (watchlistName: string, symbol: string, color: string | null) =>
     invoke<void>("update_symbol_color", { watchlistName, symbol, color }),
