@@ -703,23 +703,75 @@ pub fn migrate_watchlists_to_sqlite() -> Result<(), String> {
     Ok(())
 }
 
-pub fn search_symbol_in_watchlists(symbol: &str) -> Result<Vec<String>, String> {
+pub fn search_symbols(pattern: &str) -> Result<Vec<crate::models::SymbolSearchResult>, String> {
     let conn = open_db().map_err(|e| e.to_string())?;
-    let symbol_upper = symbol.to_uppercase();
     
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT w.name FROM watchlists w 
-         JOIN watchlist_symbols ws ON w.id = ws.watchlist_id 
-         WHERE ws.symbol = ?1 
-         ORDER BY w.name"
-    ).map_err(|e| e.to_string())?;
+    // Check if pattern contains regex meta characters
+    let is_regex = pattern.chars().any(|c| ".^$*+?()[{\\|".contains(c));
     
-    let watchlist_iter = stmt.query_map(params![symbol_upper], |row| {
-        row.get::<_, String>(0)
-    }).map_err(|e| e.to_string())?;
-    
-    let watchlists: Result<Vec<String>, _> = watchlist_iter.collect();
-    watchlists.map_err(|e| e.to_string())
+    if is_regex {
+        let regex_pattern = pattern.to_uppercase();
+        let re = match regex::Regex::new(&regex_pattern) {
+            Ok(r) => r,
+            Err(_) => return Ok(vec![]), // If invalid regex, return empty
+        };
+        
+        let mut stmt = conn.prepare(
+            "SELECT ws.symbol, w.name FROM watchlist_symbols ws 
+             JOIN watchlists w ON ws.watchlist_id = w.id 
+             ORDER BY ws.symbol, w.name"
+        ).map_err(|e| e.to_string())?;
+        
+        let mut results_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        
+        let rows = stmt.query_map([], |row| {
+            let symbol: String = row.get(0)?;
+            let watchlist: String = row.get(1)?;
+            Ok((symbol, watchlist))
+        }).map_err(|e| e.to_string())?;
+        
+        for row in rows {
+            if let Ok((sym, wl)) = row {
+                if re.is_match(&sym) {
+                    results_map.entry(sym).or_default().push(wl);
+                }
+            }
+        }
+        
+        let mut final_results: Vec<crate::models::SymbolSearchResult> = results_map.into_iter().map(|(s, wls)| {
+            crate::models::SymbolSearchResult {
+                symbol: s,
+                watchlists: wls,
+            }
+        }).collect();
+        final_results.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+        Ok(final_results)
+    } else {
+        // Normal search (exact match)
+        let symbol_upper = pattern.to_uppercase();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT w.name FROM watchlists w 
+             JOIN watchlist_symbols ws ON w.id = ws.watchlist_id 
+             WHERE ws.symbol = ?1 
+             ORDER BY w.name"
+        ).map_err(|e| e.to_string())?;
+        
+        let watchlist_iter = stmt.query_map(params![symbol_upper], |row| {
+            row.get::<_, String>(0)
+        }).map_err(|e| e.to_string())?;
+        
+        let watchlists: Result<Vec<String>, _> = watchlist_iter.collect();
+        let wls = watchlists.map_err(|e| e.to_string())?;
+        
+        if wls.is_empty() {
+            Ok(vec![])
+        } else {
+            Ok(vec![crate::models::SymbolSearchResult {
+                symbol: symbol_upper,
+                watchlists: wls,
+            }])
+        }
+    }
 }
 
 // ─── Last selection ──────────────────────────────────────────────────────────

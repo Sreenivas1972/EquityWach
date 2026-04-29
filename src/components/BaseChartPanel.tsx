@@ -53,12 +53,12 @@ function BaseChartPanelComponent({
   onSelectWatchlist,
 }: Props) {
   const [searchInput, setSearchInput] = useState("");
-  const [searchResults, setSearchResults] = useState<SymbolSearchResult | null>(null);
+  const [searchResults, setSearchResults] = useState<SymbolSearchResult[] | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchInput(e.target.value);
+    setSearchInput(e.target.value.toUpperCase());
   }, []);
 
   const handleSearchKeyPress = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -67,7 +67,7 @@ function BaseChartPanelComponent({
       try {
         const results = await api.searchSymbol(value);
         setSearchResults(results);
-        setShowSearchResults(results.watchlists.length > 0);
+        setShowSearchResults(results.length > 0);
       } catch {
         setSearchResults(null);
         setShowSearchResults(false);
@@ -75,13 +75,25 @@ function BaseChartPanelComponent({
     }
   }, []);
 
-  const handleSelectWatchlist = useCallback((watchlistName: string) => {
-    if (onSelectWatchlist && searchResults) {
-      onSelectWatchlist(watchlistName, searchResults.symbol);
+  const handleSelectWatchlist = useCallback((watchlistName: string, selectedSymbol: string) => {
+    if (onSelectWatchlist) {
+      onSelectWatchlist(watchlistName, selectedSymbol);
       setShowSearchResults(false);
       setSearchInput("");
     }
-  }, [onSelectWatchlist, searchResults]);
+  }, [onSelectWatchlist]);
+
+  const handleSelectSymbol = useCallback(async (selectedSymbol: string) => {
+    setSearchInput(selectedSymbol);
+    try {
+      const results = await api.searchSymbol(selectedSymbol);
+      setSearchResults(results);
+      setShowSearchResults(results.length > 0);
+    } catch {
+      setSearchResults(null);
+      setShowSearchResults(false);
+    }
+  }, []);
 
   const handleSearchFocus = useCallback(() => {
     if (showSearchResults && searchResults) {
@@ -306,13 +318,32 @@ function BaseChartPanelComponent({
             onFocus={handleSearchFocus}
             onBlur={handleSearchBlur}
           />
-          {showSearchResults && searchResults && searchResults.watchlists.length > 0 && (
+          {showSearchResults && searchResults && searchResults.length > 1 && (
             <div className="chart-search-results">
-              {searchResults.watchlists.map((watchlistName) => (
+              {searchResults.map((result) => (
+                <div
+                  key={result.symbol}
+                  className="chart-search-result-item"
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent onBlur before click registers
+                    handleSelectSymbol(result.symbol);
+                  }}
+                >
+                  {result.symbol}
+                </div>
+              ))}
+            </div>
+          )}
+          {showSearchResults && searchResults && searchResults.length === 1 && searchResults[0].watchlists.length > 0 && (
+            <div className="chart-search-results">
+              {searchResults[0].watchlists.map((watchlistName) => (
                 <div
                   key={watchlistName}
                   className="chart-search-result-item"
-                  onClick={() => handleSelectWatchlist(watchlistName)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent onBlur before click registers
+                    handleSelectWatchlist(watchlistName, searchResults[0].symbol);
+                  }}
                 >
                   {watchlistName}
                 </div>

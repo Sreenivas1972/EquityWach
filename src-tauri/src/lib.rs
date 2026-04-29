@@ -30,7 +30,7 @@ fn load_symbols(watchlist_name: String) -> Result<Vec<models::WatchlistSymbol>, 
 }
 
 #[tauri::command]
-fn search_symbol(symbol: String) -> Result<SymbolSearchResult, String> {
+fn search_symbol(symbol: String) -> Result<Vec<SymbolSearchResult>, String> {
     watchlists::search_symbol(&symbol)
 }
 

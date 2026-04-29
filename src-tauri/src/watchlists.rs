@@ -35,10 +35,6 @@ pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Op
     storage::update_symbol_tag_color(watchlist_name, symbol, tag_color)
 }
 
-pub fn search_symbol(symbol: &str) -> Result<crate::models::SymbolSearchResult, String> {
-    let watchlists = storage::search_symbol_in_watchlists(symbol)?;
-    Ok(crate::models::SymbolSearchResult {
-        symbol: symbol.to_uppercase(),
-        watchlists,
-    })
+pub fn search_symbol(symbol: &str) -> Result<Vec<crate::models::SymbolSearchResult>, String> {
+    storage::search_symbols(symbol)
 }

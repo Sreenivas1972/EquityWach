@@ -960,6 +960,7 @@ dependencies = [
  "csv",
  "dirs 5.0.1",
  "open",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
