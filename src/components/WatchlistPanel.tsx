@@ -87,6 +87,12 @@ export default function WatchlistPanel({
     } else if (tagColors[key]) {
       event.preventDefault();
       onUpdateSymbolTagColor(selectedSymbol, tagColors[key]);
+    } else if (key === 'c') {
+      event.preventDefault();
+      onUpdateSymbolColor(selectedSymbol, null);
+    } else if (key === 'd') {
+      event.preventDefault();
+      onUpdateSymbolTagColor(selectedSymbol, null);
     }
   }, [selectedSymbol, onUpdateSymbolColor, onUpdateSymbolTagColor]);
 
