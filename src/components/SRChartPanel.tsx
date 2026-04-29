@@ -95,6 +95,7 @@ export default function SRChartPanel({
         borderColor: "#d4deea",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 15,
       },
       rightPriceScale: {
         borderColor: "#d4deea",
@@ -218,8 +219,6 @@ export default function SRChartPanel({
     }));
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
-
-    chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
   // ── Render trendline drawings ─────────────────────────────────────────────
@@ -251,8 +250,6 @@ export default function SRChartPanel({
 
       manualTrendlineSeriesRef.current[drawing.id] = line;
     });
-
-    chart.timeScale().fitContent();
   }, [trendlineDrawings, interval]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {

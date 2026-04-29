@@ -98,6 +98,7 @@ export default function FibChartPanel({
         borderColor: "#d4deea",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 15,
       },
       rightPriceScale: {
         borderColor: "#d4deea",
@@ -385,8 +386,6 @@ export default function FibChartPanel({
 
       manualFibSeriesRef.current[drawing.id] = seriesList;
     });
-
-    chart.timeScale().fitContent();
   }, [fibDrawings, interval]);
 
   // ── Update data whenever candles change ───────────────────────────────────
@@ -406,8 +405,6 @@ export default function FibChartPanel({
     }));
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
-
-    chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {

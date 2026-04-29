@@ -57,6 +57,7 @@ export default function EMAChartPanel({
         borderColor: "#d4deea",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 15,
       },
       rightPriceScale: {
         borderColor: "#d4deea",
@@ -144,8 +145,6 @@ export default function EMAChartPanel({
     emaSeriesRef.current.ema20.setData(ema20Data as Parameters<typeof emaSeriesRef.current.ema20.setData>[0]);
     emaSeriesRef.current.ema50.setData(ema50Data as Parameters<typeof emaSeriesRef.current.ema50.setData>[0]);
     emaSeriesRef.current.ema200.setData(ema200Data as Parameters<typeof emaSeriesRef.current.ema200.setData>[0]);
-
-    chartRef.current?.timeScale().fitContent();
   }, [candles, interval]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {

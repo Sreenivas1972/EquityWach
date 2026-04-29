@@ -124,6 +124,7 @@ function BaseChartPanelComponent({
         borderColor: "#d4deea",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 15,
       },
       rightPriceScale: {
         borderColor: "#d4deea",
@@ -247,13 +248,6 @@ function BaseChartPanelComponent({
         pivotSeriesRef.current[level.key]?.setData([]);
       });
     }
-
-    chartRef.current?.timeScale().fitContent();
-    chartRef.current?.applyOptions({
-      timeScale: {
-        rightOffset: 15,
-      },
-    });
   }, [candles, interval, pivotSourceRef.current]);
 
   // ── Fetch pivot source data ───────────────────────────────────────────────
