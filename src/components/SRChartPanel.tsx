@@ -68,6 +68,7 @@ export default function SRChartPanel({
   const manualTrendlineSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
 
   const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
+  const [showDrawings, setShowDrawings] = useState(true);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
 
@@ -129,6 +130,17 @@ export default function SRChartPanel({
       chartRef.current = null;
       seriesRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.shiftKey && e.key.toLowerCase() === 'd') {
+        setShowDrawings(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // ── Load trendline drawings when symbol changes ───────────────────────────
@@ -301,73 +313,89 @@ export default function SRChartPanel({
         </div>
       )}
 
-      <div className="sr-controls">
-        <button
-          type="button"
-          className="sr-action-button"
-          onClick={() => {
-            setIsDrawingMode((mode) => !mode);
-            setAnchorA(null);
-          }}
-        >
-          {isDrawingMode ? "Cancel trendline" : "Draw trendline"}
-        </button>
-        <button
-          type="button"
-          className="sr-action-button"
-          onClick={handleClearDrawings}
-          disabled={trendlineDrawings.length === 0}
-        >
-          Clear drawings
-        </button>
-        {isDrawingMode && (
-          <span className="sr-hint">
-            {anchorA
-              ? "Click the chart to place the second trendline anchor."
-              : "Click the chart to place the first trendline anchor."}
-          </span>
-        )}
-      </div>
-
-      {trendlineDrawings.length > 0 && (
-        <div className="sr-drawing-list">
-          <strong>Saved trendlines</strong>
-          {trendlineDrawings.map((drawing) => (
-            <div key={drawing.id} className="sr-drawing-item">
-              <span>
-                Trendline: 
-                {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
-                {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+      <div className="chart-content-wrapper">
+        <div className="chart-main">
+          <div className="sr-controls">
+            <button
+              type="button"
+              className="sr-action-button"
+              onClick={() => {
+                setIsDrawingMode((mode) => !mode);
+                setAnchorA(null);
+              }}
+            >
+              {isDrawingMode ? "Cancel trendline" : "Draw trendline"}
+            </button>
+            <button
+              type="button"
+              className="sr-action-button"
+              onClick={handleClearDrawings}
+              disabled={trendlineDrawings.length === 0}
+            >
+              Clear drawings
+            </button>
+            <button
+              type="button"
+              className="sr-action-button"
+              onClick={() => setShowDrawings(!showDrawings)}
+              title="Shortcut: Shift + D"
+            >
+              {showDrawings ? "Hide panel" : "Show panel"}
+            </button>
+            {isDrawingMode && (
+              <span className="sr-hint">
+                {anchorA
+                  ? "Click the chart to place the second trendline anchor."
+                  : "Click the chart to place the first trendline anchor."}
               </span>
-              <button
-                type="button"
-                className="sr-delete-button"
-                onClick={() => handleDeleteDrawing(drawing.id)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+          </div>
 
-      {/* Chart area */}
-      <div className="chart-canvas-container" ref={containerRef}>
-        {isLoading && (
-          <div className="chart-loading-overlay">
-            <span className="spinner" />
-            <span>Loading chart…</span>
+          {/* Chart area */}
+          <div className="chart-canvas-container" ref={containerRef}>
+            {isLoading && (
+              <div className="chart-loading-overlay">
+                <span className="spinner" />
+                <span>Loading chart…</span>
+              </div>
+            )}
+            {!isLoading && !symbol && (
+              <div className="chart-placeholder">
+                <span>Select a symbol from the watchlist →</span>
+              </div>
+            )}
+            {!isLoading && symbol && candles.length === 0 && !isLoading && (
+              <div className="chart-placeholder">
+                <span>No data available for {symbol}</span>
+              </div>
+            )}
           </div>
-        )}
-        {!isLoading && !symbol && (
-          <div className="chart-placeholder">
-            <span>Select a symbol from the watchlist →</span>
-          </div>
-        )}
-        {!isLoading && symbol && candles.length === 0 && !isLoading && (
-          <div className="chart-placeholder">
-            <span>No data available for {symbol}</span>
-          </div>
+        </div>
+
+        {showDrawings && (
+          <div className="drawings-sidebar" style={{ width: '300px', borderLeft: '1px solid #ddd', padding: '10px' }}>
+            {trendlineDrawings.length > 0 && (
+            <div className="sr-drawing-list">
+              <strong>Saved trendlines</strong>
+              {trendlineDrawings.map((drawing) => (
+                <div key={drawing.id} className="sr-drawing-item">
+                  <span>
+                    Trendline: 
+                    {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
+                    {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+                  </span>
+                  <button
+                    type="button"
+                    className="sr-delete-button"
+                    onClick={() => handleDeleteDrawing(drawing.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         )}
       </div>
     </div>
