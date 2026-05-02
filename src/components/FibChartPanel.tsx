@@ -68,7 +68,7 @@ export default function FibChartPanel({
   const manualFibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>[]>>({});
 
   const [fibDrawings, setFibDrawings] = useState<FibDrawing[]>([]);
-  const [showDrawings, setShowDrawings] = useState(true);
+    const [showDrawings, setShowDrawings] = useState(false);
   const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | 'projection' | null>(null);
   const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
   const [anchorB, setAnchorB] = useState<FibAnchor | null>(null);

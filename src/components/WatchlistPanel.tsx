@@ -254,8 +254,8 @@ export default function WatchlistPanel({
                 }}
                 title={sym.symbol}
                 style={{
-                  backgroundColor: sym.color || undefined,
-                  /*borderRight: sym.color ? `10px solid ${sym.color}` : undefined, */
+                  //backgroundColor: sym.color || undefined,
+                  borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
                   borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
                 }}
               >

@@ -68,7 +68,7 @@ export default function SRChartPanel({
   const manualTrendlineSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
 
   const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
-  const [showDrawings, setShowDrawings] = useState(true);
+    const [showDrawings, setShowDrawings] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
     const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
   const [editingState, setEditingState] = useState<{ trendlineId: string; anchor: "A" | "B" } | null>(null);

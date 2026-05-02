@@ -378,7 +378,7 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
+  background: #2d2d2d;
   border-left: 1px solid var(--border);
   overflow: hidden;
   transition: width 0.2s ease;
@@ -393,7 +393,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #444;
   flex-shrink: 0;
 }
 
@@ -454,12 +454,12 @@ body {
 .watchlist-title {
   font-weight: 600;
   font-size: 13px;
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 .watchlist-empty {
   padding: 16px 12px;
-  color: var(--text-muted);
+  color: #aaa;
   font-size: 12px;
   display: flex;
   flex-direction: column;
@@ -469,10 +469,10 @@ body {
 .watchlist-select {
   margin: 8px 10px;
   padding: 5px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: #444;
+  border: 1px solid #555;
   border-radius: 6px;
-  color: var(--text-primary);
+  color: #ffffff;
   font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
@@ -488,17 +488,17 @@ body {
   display: flex;
   gap: 4px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #444;
   flex-shrink: 0;
 }
 
 .interval-btn {
   flex: 1;
   padding: 4px 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: #444;
+  border: 1px solid #555;
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: #ccc;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -506,8 +506,8 @@ body {
 }
 
 .interval-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: #555;
+  color: #fff;
 }
 
 .interval-btn.active {
@@ -521,17 +521,17 @@ body {
   display: flex;
   gap: 4px;
   padding: 5px 10px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #444;
   flex-shrink: 0;
 }
 
 .sort-btn {
   flex: 1;
   padding: 4px 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: #444;
+  border: 1px solid #555;
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: #ccc;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -540,8 +540,8 @@ body {
 }
 
 .sort-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: #555;
+  color: #fff;
 }
 
 .sort-btn--active {
@@ -566,7 +566,7 @@ body {
 
 .symbol-list::-webkit-scrollbar { width: 4px; }
 .symbol-list::-webkit-scrollbar-track { background: transparent; }
-.symbol-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.symbol-list::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
 
 .symbol-item {
   display: block;
@@ -575,7 +575,7 @@ body {
   background: none;
   border: none;
   text-align: left;
-  color: var(--text-primary);
+  color: #ffffff;
   font-size: 13px;
   font-family: var(--font);
   cursor: pointer;
@@ -583,12 +583,12 @@ body {
 }
 
 .symbol-item:hover {
-  background: var(--bg-surface);
+  background: #3a3a3a;
 }
 
 .symbol-item.active {
-  background: rgba(31, 111, 235, 0.15);
-  color: var(--accent-hover);
+  background: rgba(37, 99, 235, 0.25);
+  color: #fff;
   font-weight: 600;
 }
 
@@ -596,7 +596,7 @@ body {
 .symbol-list-empty {
   padding: 12px 14px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: #888;
 }
 
 .detached-layout {
@@ -840,7 +840,7 @@ body {
 .icon-btn {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: #aaa;
   font-size: 16px;
   cursor: pointer;
   padding: 2px 6px;
@@ -850,8 +850,8 @@ body {
 }
 
 .icon-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-surface);
+  color: #fff;
+  background: #444;
 }
 
 /* ── Responsive fallback ───────────────────────────────────────────────────── */
