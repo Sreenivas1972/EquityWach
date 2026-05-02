@@ -211,17 +211,26 @@ fn clear_fib_drawings(symbol: String) -> Result<(), String> {
 
 #[tauri::command]
 fn add_price_alert(symbol: String, target_price: f64, direction: String) -> Result<(), String> {
-    storage::add_price_alert(&symbol, target_price, &direction)
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::add_price_alert(&symbol, target_price, &direction, &conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_price_alerts(symbol: String) -> Vec<PriceAlert> {
-    storage::get_price_alerts_for_symbol(&symbol)
+fn get_price_alerts(symbol: String) -> Result<Vec<PriceAlert>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::get_price_alerts_for_symbol(&symbol, &conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_all_price_alerts() -> Vec<PriceAlert> {
-    storage::load_price_alerts()
+fn get_all_price_alerts() -> Result<Vec<PriceAlert>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::load_price_alerts(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_price_alert(id: String) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::delete_price_alert(&id, &conn).map_err(|e| e.to_string())
 }
 
 // ─── Auth Commands ──────────────────────────────────────────────────────────
@@ -278,6 +287,7 @@ pub fn run() {
             add_price_alert,
             get_price_alerts,
             get_all_price_alerts,
+            delete_price_alert,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

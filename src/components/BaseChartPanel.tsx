@@ -6,7 +6,7 @@ import {
   UTCTimestamp,
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
-import type { CandleData, Interval, PivotSource, SymbolSearchResult } from "../types";
+import type { CandleData, Interval, PivotSource, PriceAlert, SymbolSearchResult } from "../types";
 
 type CamarillaLevelMeta = {
   key: string;
@@ -112,6 +112,10 @@ function BaseChartPanelComponent({
   const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
   const pivotSourceRef = useRef<PivotSource | null>(null);
   const crosshairPriceRef = useRef<number | null>(null);
+  const alertSeriesRef = useRef<Record<string, any>>({});
+
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [chartHeight, setChartHeight] = useState(0);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -224,13 +228,38 @@ function BaseChartPanelComponent({
         const latestClose = candles[candles.length - 1].close;
         const direction = latestClose > targetPrice ? "below" : "above";
 
-        api.addPriceAlert(symbol, targetPrice, direction).catch(() => {});
+        api.addPriceAlert(symbol, targetPrice, direction).then(() => {
+          api.getPriceAlerts(symbol).then(setAlerts).catch(() => {});
+        }).catch(() => {});
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [symbol, candles]);
+
+  // ── Fetch alerts when symbol changes ──────────────────────────────────────
+  useEffect(() => {
+    if (!symbol) {
+      setAlerts([]);
+      return;
+    }
+    api.getPriceAlerts(symbol).then(setAlerts).catch(() => {});
+  }, [symbol]);
+
+  // ── Track chart container height for alert button positioning ─────────────
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+
+    const observer = new ResizeObserver(() => {
+      setChartHeight(el.clientHeight);
+    });
+    observer.observe(el);
+    setChartHeight(el.clientHeight);
+
+    return () => observer.disconnect();
+  }, []);
 
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
@@ -327,6 +356,39 @@ function BaseChartPanelComponent({
     };
   }, [symbol, interval]);
 
+  // ── Render alert lines ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!seriesRef.current || candles.length === 0) return;
+
+    Object.values(alertSeriesRef.current).forEach((line) => {
+      try { seriesRef.current!.removePriceLine(line); } catch {}
+    });
+    alertSeriesRef.current = {};
+
+    alerts.forEach((alert) => {
+      const color = alert.direction === "above" ? "#22c55e" : "#ef4444";
+
+      try {
+        const lineId = seriesRef.current!.createPriceLine({
+          price: alert.target_price,
+          color,
+          lineWidth: 1,
+          lineStyle: 3,
+          axisLabelVisible: true,
+        });
+        alertSeriesRef.current[alert.id] = lineId;
+      } catch {}
+    });
+  }, [alerts]);
+
+  const handleDeleteAlert = useCallback((id: string) => {
+    api.deletePriceAlert(id).then(() => {
+      if (symbol) {
+        api.getPriceAlerts(symbol).then(setAlerts).catch(() => {});
+      }
+    }).catch(() => {});
+  }, [symbol]);
+
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
     partially_refreshed: { text: "Updated", color: "#3fb950" },
@@ -417,7 +479,61 @@ function BaseChartPanelComponent({
       )}
 
       {/* Chart area */}
-      <div className="chart-canvas-container" ref={containerRef}>
+      <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+        {alerts.length > 0 && (
+          <div className="alert-buttons-overlay" style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 80,
+            pointerEvents: "none",
+            zIndex: 10,
+            height: chartHeight || "100%",
+          }}>
+            {alerts.map((alert) => {
+              const color = alert.direction === "above" ? "#22c55e" : "#ef4444";
+              const y = seriesRef.current?.priceToCoordinate(alert.target_price);
+              if (y === null || y === undefined) return null;
+              return (
+                <div
+                  key={alert.id}
+                  className="alert-button-wrapper"
+                  style={{
+                    position: "absolute",
+                    right: 4,
+                    top: y,
+                    transform: "translateY(-50%)",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAlert(alert.id)}
+                    style={{
+                      background: color,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 2,
+                      width: 20,
+                      height: 20,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      lineHeight: 1,
+                      padding: 0,
+                    }}
+                    title={`Delete alert @ ${alert.target_price} (${alert.direction})`}
+                  >
+                    x
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {isLoading && (
           <div className="chart-loading-overlay">
             <span className="spinner" />

@@ -113,4 +113,7 @@ export const api = {
 
   getAllPriceAlerts: () =>
     invoke<PriceAlert[]>("get_all_price_alerts"),
+
+  deletePriceAlert: (id: string) =>
+    invoke<void>("delete_price_alert", { id }),
 };

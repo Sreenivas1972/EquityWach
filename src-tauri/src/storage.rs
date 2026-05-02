@@ -38,9 +38,6 @@ fn kite_config_path() -> PathBuf {
 fn fetch_settings_path() -> PathBuf {
     get_app_data_dir().join("fetch_settings.json")
 }
-fn alerts_csv_path() -> PathBuf {
-    get_app_data_dir().join("price_alerts.csv")
-}
 
 // ─── Database ────────────────────────────────────────────────────────────────
 
@@ -129,6 +126,17 @@ pub fn open_db() -> SqlResult<Connection> {
             updated_at   INTEGER NOT NULL,
             PRIMARY KEY (symbol, pivot_type)
         );
+        
+        -- Price alerts
+        CREATE TABLE IF NOT EXISTS price_alerts (
+            id            TEXT    NOT NULL PRIMARY KEY,
+            symbol        TEXT    NOT NULL,
+            target_price  REAL    NOT NULL,
+            direction     TEXT    NOT NULL,
+            created_at    TEXT    NOT NULL,
+            created_ts    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_price_alerts_symbol ON price_alerts(symbol);
         ",
     )?;
     
@@ -826,66 +834,59 @@ pub fn ts_to_rfc3339(ts: i64) -> String {
         .unwrap_or_default()
 }
 
-// ─── Price Alerts (CSV) ────────────────────────────────────────────────────
+// ─── Price Alerts (SQLite) ──────────────────────────────────────────────────
 
-pub fn load_price_alerts() -> Vec<crate::models::PriceAlert> {
-    let path = alerts_csv_path();
-    if !path.exists() {
-        return vec![];
-    }
-
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    let mut alerts = vec![];
-    for line in content.lines().skip(1) {
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() >= 4 {
-            alerts.push(crate::models::PriceAlert {
-                symbol: parts[0].to_string(),
-                target_price: parts[1].parse().unwrap_or(0.0),
-                direction: parts[2].to_string(),
-                created_at: parts[3].to_string(),
-            });
-        }
-    }
-    alerts
+pub fn load_price_alerts(conn: &Connection) -> SqlResult<Vec<crate::models::PriceAlert>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, symbol, target_price, direction, created_at FROM price_alerts ORDER BY created_ts ASC"
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(crate::models::PriceAlert {
+                id: row.get(0)?,
+                symbol: row.get(1)?,
+                target_price: row.get(2)?,
+                direction: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
-pub fn save_price_alerts(alerts: &[crate::models::PriceAlert]) -> Result<(), String> {
-    ensure_app_dir().map_err(|e| e.to_string())?;
-    let path = alerts_csv_path();
-
-    let mut content = String::from("symbol,target_price,direction,created_at\n");
-    for alert in alerts {
-        content.push_str(&format!(
-            "{},{},{},{}\n",
-            alert.symbol, alert.target_price, alert.direction, alert.created_at
-        ));
-    }
-
-    std::fs::write(path, content).map_err(|e| e.to_string())
+pub fn get_price_alerts_for_symbol(symbol: &str, conn: &Connection) -> SqlResult<Vec<crate::models::PriceAlert>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, symbol, target_price, direction, created_at FROM price_alerts WHERE symbol = ?1 ORDER BY created_ts ASC"
+    )?;
+    let rows = stmt
+        .query_map(params![symbol], |row| {
+            Ok(crate::models::PriceAlert {
+                id: row.get(0)?,
+                symbol: row.get(1)?,
+                target_price: row.get(2)?,
+                direction: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
-pub fn add_price_alert(symbol: &str, target_price: f64, direction: &str) -> Result<(), String> {
-    let mut alerts = load_price_alerts();
+pub fn add_price_alert(symbol: &str, target_price: f64, direction: &str, conn: &Connection) -> SqlResult<()> {
+    let id = format!("alert_{}_{}", symbol, Utc::now().timestamp_millis());
+    let created_at = ts_to_rfc3339(Utc::now().timestamp());
+    let created_ts = Utc::now().timestamp();
 
-    let created_at = chrono::Local::now().to_string();
-    alerts.push(crate::models::PriceAlert {
-        symbol: symbol.to_string(),
-        target_price,
-        direction: direction.to_string(),
-        created_at,
-    });
-
-    save_price_alerts(&alerts)
+    conn.execute(
+        "INSERT INTO price_alerts (id, symbol, target_price, direction, created_at, created_ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, symbol, target_price, direction, created_at, created_ts],
+    )?;
+    Ok(())
 }
 
-pub fn get_price_alerts_for_symbol(symbol: &str) -> Vec<crate::models::PriceAlert> {
-    load_price_alerts()
-        .into_iter()
-        .filter(|a| a.symbol == symbol)
-        .collect()
+pub fn delete_price_alert(id: &str, conn: &Connection) -> SqlResult<()> {
+    conn.execute("DELETE FROM price_alerts WHERE id = ?1", params![id])?;
+    Ok(())
 }

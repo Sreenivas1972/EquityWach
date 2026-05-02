@@ -123,8 +123,9 @@ pub struct SymbolSearchResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceAlert {
+    pub id: String,
     pub symbol: String,
     pub target_price: f64,
-    pub direction: String, // "above" or "below"
-    pub created_at: String, // ISO 8601 timestamp
+    pub direction: String,
+    pub created_at: String,
 }
