@@ -238,14 +238,14 @@ function BaseChartPanelComponent({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [symbol, candles]);
 
-  // ── Fetch alerts when symbol changes ──────────────────────────────────────
+  // ── Fetch alerts when candles are loaded ────────────────────────────────
   useEffect(() => {
     if (!symbol) {
       setAlerts([]);
       return;
     }
     api.getPriceAlerts(symbol).then(setAlerts).catch(() => {});
-  }, [symbol]);
+  }, [candles]);
 
   // ── Track chart container height for alert button positioning ─────────────
   useEffect(() => {
