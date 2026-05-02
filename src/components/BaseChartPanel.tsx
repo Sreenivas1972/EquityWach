@@ -483,10 +483,10 @@ function BaseChartPanelComponent({
         {alerts.length > 0 && (
           <div className="alert-buttons-overlay" style={{
             position: "absolute",
+            left: 0,
             right: 0,
             top: 0,
             bottom: 0,
-            width: 80,
             pointerEvents: "none",
             zIndex: 10,
             height: chartHeight || "100%",
@@ -501,9 +501,8 @@ function BaseChartPanelComponent({
                   className="alert-button-wrapper"
                   style={{
                     position: "absolute",
-                    right: 4,
+                    left: "50%",
                     top: y,
-                    transform: "translateY(-50%)",
                     pointerEvents: "auto",
                   }}
                 >
@@ -513,17 +512,18 @@ function BaseChartPanelComponent({
                     style={{
                       background: color,
                       color: "#fff",
-                      border: "none",
-                      borderRadius: 2,
-                      width: 20,
-                      height: 20,
-                      fontSize: 12,
+                      border: "2px solid #fff",
+                      borderRadius: 3,
+                      width: 18,
+                      height: 18,
+                      fontSize: 11,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       lineHeight: 1,
                       padding: 0,
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
                     }}
                     title={`Delete alert @ ${alert.target_price} (${alert.direction})`}
                   >
