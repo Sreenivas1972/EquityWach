@@ -70,7 +70,14 @@ export default function SRChartPanel({
   const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
   const [showDrawings, setShowDrawings] = useState(true);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
+    const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
+  const [editingState, setEditingState] = useState<{ trendlineId: string; anchor: "A" | "B" } | null>(null);
+
+  useEffect(() => {
+    if (isDrawingMode) {
+      setEditingState(null);
+    }
+  }, [isDrawingMode]);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -161,18 +168,18 @@ export default function SRChartPanel({
       });
   }, [symbol]);
 
-  // ── Handle chart clicks for trendline drawing ─────────────────────────────
+  // ── Handle chart clicks for trendline drawing and editing ─────────────────
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
 
     const handleChartClick = (param: any) => {
-      if (!isDrawingMode || !param.point || !param.time) {
+      if (!param.point || !param.time || !seriesRef.current) {
         return;
       }
 
-      const price = seriesRef.current?.coordinateToPrice(param.point.y);
-      if (price === null || price === undefined || Number.isNaN(price as number)) {
+      const price = seriesRef.current.coordinateToPrice(param.point.y);
+      if (price === null || price === undefined || Number.isNaN(price)) {
         return;
       }
 
@@ -181,38 +188,86 @@ export default function SRChartPanel({
         return;
       }
 
-      const clickedPoint: TrendlineAnchor = {
-        time: clickedTime,
-        price,
-      };
+      const clickedPoint: TrendlineAnchor = { time: clickedTime, price };
 
-      if (!anchorA) {
-        setAnchorA(clickedPoint);
+      // Case 1: Drawing a new trendline
+      if (isDrawingMode) {
+        if (!anchorA) {
+          setAnchorA(clickedPoint);
+        } else {
+          const symbolValue = symbol;
+          if (!symbolValue) return;
+
+          const drawing: TrendlineDrawing = {
+            id: `trendline-${Date.now()}`,
+            anchorA,
+            anchorB: clickedPoint,
+          };
+          const nextDrawings = [...trendlineDrawings, drawing];
+          setTrendlineDrawings(nextDrawings);
+          setAnchorA(null);
+          setIsDrawingMode(false);
+          api.saveSrDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+        }
         return;
       }
 
-      const symbolValue = symbol;
-      if (!symbolValue) {
+      // Case 2: Moving a selected anchor
+      if (editingState) {
+        const { trendlineId, anchor } = editingState;
+        const nextDrawings = trendlineDrawings.map((d) => {
+          if (d.id === trendlineId) {
+            return {
+              ...d,
+              [anchor === 'A' ? 'anchorA' : 'anchorB']: clickedPoint,
+            };
+          }
+          return d;
+        });
+
+        setTrendlineDrawings(nextDrawings);
+        setEditingState(null);
+        if (symbol) {
+          api.saveSrDrawings(symbol, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+        }
         return;
       }
 
-      const drawing: TrendlineDrawing = {
-        id: `trendline-${Date.now()}`,
-        anchorA,
-        anchorB: clickedPoint,
-      };
-      const nextDrawings = [...trendlineDrawings, drawing];
-      setTrendlineDrawings(nextDrawings);
-      setAnchorA(null);
-      setIsDrawingMode(false);
-      api.saveSrDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+      // Case 3: Selecting an anchor to edit
+      const CLICK_PROXIMITY_THRESHOLD = 10; // pixels
+      for (const drawing of trendlineDrawings) {
+        const anchorACoord = {
+          x: chart.timeScale().timeToCoordinate(toChartTime(drawing.anchorA.time, interval)),
+          y: seriesRef.current.priceToCoordinate(drawing.anchorA.price),
+        };
+        const anchorBCoord = {
+          x: chart.timeScale().timeToCoordinate(toChartTime(drawing.anchorB.time, interval)),
+          y: seriesRef.current.priceToCoordinate(drawing.anchorB.price),
+        };
+
+        if (anchorACoord.x !== null && anchorACoord.y !== null) {
+          const distanceA = Math.hypot(param.point.x - anchorACoord.x, param.point.y - anchorACoord.y);
+          if (distanceA < CLICK_PROXIMITY_THRESHOLD) {
+            setEditingState({ trendlineId: drawing.id, anchor: 'A' });
+            return;
+          }
+        }
+
+        if (anchorBCoord.x !== null && anchorBCoord.y !== null) {
+          const distanceB = Math.hypot(param.point.x - anchorBCoord.x, param.point.y - anchorBCoord.y);
+          if (distanceB < CLICK_PROXIMITY_THRESHOLD) {
+            setEditingState({ trendlineId: drawing.id, anchor: 'B' });
+            return;
+          }
+        }
+      }
     };
 
     chart.subscribeClick(handleChartClick);
     return () => {
       chart.unsubscribeClick(handleChartClick);
     };
-  }, [anchorA, trendlineDrawings, isDrawingMode, symbol]);
+  }, [anchorA, trendlineDrawings, isDrawingMode, symbol, editingState, interval]);
 
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
@@ -272,9 +327,32 @@ export default function SRChartPanel({
 
       chart.timeScale().fitContent();
     } catch (err) {
-      console.error('Error rendering trendlines:', err);
+      console.error("Error rendering trendlines:", err);
     }
   }, [trendlineDrawings, interval]);
+
+  // ── Highlight edited trendline ──────────────────────────────────────────
+  const prevEditingStateRef = useRef(editingState);
+  useEffect(() => {
+    const prevEditingState = prevEditingStateRef.current;
+    // Reset previous one
+    if (prevEditingState && prevEditingState.trendlineId) {
+      const series = manualTrendlineSeriesRef.current[prevEditingState.trendlineId];
+      if (series) {
+        series.applyOptions({ color: "#2563eb" });
+      }
+    }
+
+    // Highlight current one
+    if (editingState && editingState.trendlineId) {
+      const series = manualTrendlineSeriesRef.current[editingState.trendlineId];
+      if (series) {
+        series.applyOptions({ color: "#ff9100" });
+      }
+    }
+
+    prevEditingStateRef.current = editingState;
+  }, [editingState]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
@@ -328,16 +406,20 @@ export default function SRChartPanel({
       <div className="chart-content-wrapper">
         <div className="chart-main">
           <div className="sr-controls">
-            <button
-              type="button"
-              className="sr-action-button"
-              onClick={() => {
-                setIsDrawingMode((mode) => !mode);
-                setAnchorA(null);
-              }}
-            >
-              {isDrawingMode ? "Cancel trendline" : "Draw trendline"}
-            </button>
+              <button
+                type="button"
+                className="sr-action-button"
+                onClick={() => {
+                  if (editingState) {
+                    setEditingState(null);
+                  } else {
+                    setIsDrawingMode((mode) => !mode);
+                    setAnchorA(null);
+                  }
+                }}
+              >
+                {editingState ? "Cancel edit" : isDrawingMode ? "Cancel trendline" : "Draw trendline"}
+              </button>
             <button
               type="button"
               className="sr-action-button"
@@ -356,9 +438,13 @@ export default function SRChartPanel({
             </button>
             {isDrawingMode && (
               <span className="sr-hint">
-                {anchorA
+                {isDrawingMode
+                ? anchorA
                   ? "Click the chart to place the second trendline anchor."
-                  : "Click the chart to place the first trendline anchor."}
+                  : "Click the chart to place the first trendline anchor."
+                : editingState
+                ? "Click the chart to move the selected anchor."
+                : ""}
               </span>
             )}
           </div>
