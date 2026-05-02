@@ -501,7 +501,7 @@ function BaseChartPanelComponent({
                   className="alert-button-wrapper"
                   style={{
                     position: "absolute",
-                    left: "50%",
+                    right: "20",
                     top: y,
                     pointerEvents: "auto",
                   }}
