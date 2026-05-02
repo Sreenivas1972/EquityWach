@@ -55,9 +55,9 @@ export default function WatchlistPanel({
 
   // Color mapping for keyboard shortcuts
   const statusColors: Record<string, string> = {
-    'r': 'red',
-    'y': 'yellow',
-    'g': 'green',
+    'r': '#ff4d4d', // red
+    'y': '#ffcc00', // dark yellow
+    'g': '#3fb950', // light green
   };
 
   const tagColors: Record<string, string> = {
@@ -254,9 +254,9 @@ export default function WatchlistPanel({
                 }}
                 title={sym.symbol}
                 style={{
-                  /*backgroundColor: sym.tag_color || undefined,*/
-                  borderRight: sym.color ? `5px solid ${sym.color}` : undefined,
-                  borderLeft: sym.tag_color ? `5px solid ${sym.tag_color}` : undefined
+                  backgroundColor: sym.color || undefined,
+                  /*borderRight: sym.color ? `10px solid ${sym.color}` : undefined, */
+                  borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
                 }}
               >
                 {displaySymbol(sym.symbol)}
