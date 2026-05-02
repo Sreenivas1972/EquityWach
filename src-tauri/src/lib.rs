@@ -50,6 +50,11 @@ fn remove_symbol(watchlist_name: String, symbol: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn add_symbol_to_watchlist(watchlist_name: String, symbol: String) -> Result<(), String> {
+    watchlists::add_symbol_to_watchlist(&watchlist_name, &symbol)
+}
+
+#[tauri::command]
 fn migrate_watchlists() -> Result<(), String> {
     storage::migrate_watchlists_to_sqlite()
 }
@@ -66,11 +71,13 @@ fn set_last_selection(
     watchlist_name: Option<String>,
     symbol: Option<String>,
     interval: Option<String>,
+    last_picked_watchlist: Option<String>,
 ) -> Result<(), String> {
     storage::save_last_selection(&LastSelection {
         watchlist_name,
         symbol,
         interval,
+        last_picked_watchlist,
     })
 }
 
@@ -268,6 +275,7 @@ pub fn run() {
             update_symbol_tag_color,
             remove_symbol,
             migrate_watchlists,
+            add_symbol_to_watchlist,
             get_last_selection,
             set_last_selection,
             get_chart_data,

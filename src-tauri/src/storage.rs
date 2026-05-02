@@ -666,6 +666,52 @@ pub fn remove_symbol(watchlist_name: &str, symbol: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn add_symbol_to_watchlist(watchlist_name: &str, symbol: &str) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    
+    // Check if watchlist exists
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM watchlists WHERE name = ?1)",
+        params![watchlist_name],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if !exists {
+        return Err(format!("Watchlist '{}' not found", watchlist_name));
+    }
+    
+    // Check if symbol already exists
+    let already_exists: bool = conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM watchlist_symbols ws
+            JOIN watchlists w ON ws.watchlist_id = w.id
+            WHERE w.name = ?1 AND ws.symbol = ?2
+        )",
+        params![watchlist_name, symbol.to_uppercase()],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    
+    if already_exists {
+        return Ok(()); // Already in watchlist, no-op
+    }
+    
+    // Insert the symbol
+    conn.execute(
+        "INSERT INTO watchlist_symbols (watchlist_id, symbol, color, tag_color)
+         VALUES ((SELECT id FROM watchlists WHERE name = ?1), ?2, NULL, NULL)",
+        params![watchlist_name, symbol.to_uppercase()],
+    ).map_err(|e| e.to_string())?;
+    
+    // Update the watchlist's updated_at
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "UPDATE watchlists SET updated_at = ?1 WHERE name = ?2",
+        params![now, watchlist_name],
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 pub fn remove_watchlist(name: &str) -> Result<(), String> {
     let conn = open_db().map_err(|e| e.to_string())?;
     conn.execute(
@@ -803,6 +849,7 @@ pub fn load_last_selection() -> LastSelection {
         watchlist_name: None,
         symbol: None,
         interval: None,
+        last_picked_watchlist: None,
     })
 }
 

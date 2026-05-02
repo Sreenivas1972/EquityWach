@@ -35,6 +35,7 @@ pub struct LastSelection {
     pub watchlist_name: Option<String>,
     pub symbol: Option<String>,
     pub interval: Option<String>,
+    pub last_picked_watchlist: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

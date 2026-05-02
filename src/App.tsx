@@ -8,6 +8,7 @@ import EMAChartPanel from "./components/EMAChartPanel";
 import FibChartPanel from "./components/FibChartPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
+import WatchlistPicker from "./components/WatchlistPicker";
 import { api } from "./services/tauriApi";
 import type { CandleData, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
@@ -76,6 +77,9 @@ export default function App() {
   const [chartWarning, setChartWarning] = useState<string | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
 
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [lastPickedWatchlist, setLastPickedWatchlist] = useState<string | null>(null);
+
   useEffect(() => {
     async function boot() {
       try {
@@ -90,6 +94,10 @@ export default function App() {
 
         if (sel.interval) {
           setInterval(sel.interval as Interval);
+        }
+
+        if (sel.last_picked_watchlist) {
+          setLastPickedWatchlist(sel.last_picked_watchlist);
         }
 
         if (sel.watchlist_name && lists.some((w) => w.name === sel.watchlist_name)) {
@@ -408,6 +416,57 @@ export default function App() {
     };
   }, [sortedSymbols, selectedSymbol, handleSelectSymbol]);
 
+  // Keyboard shortcut: Cmd+M to open watchlist picker
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'm') {
+        event.preventDefault();
+        if (selectedSymbol && watchlists.length > 0) {
+          setIsPickerOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedSymbol, watchlists.length]);
+
+  const handleMoveToWatchlist = useCallback(
+    async (watchlistName: string) => {
+      if (!selectedSymbol || !selectedWatchlist) return;
+
+      try {
+        const currentIndex = sortedSymbols.findIndex(s => s.symbol === selectedSymbol);
+
+        await api.addSymbolToWatchlist(watchlistName, selectedSymbol);
+        if (selectedWatchlist !== watchlistName) {
+          await api.removeSymbol(selectedWatchlist, selectedSymbol);
+        }
+        setLastPickedWatchlist(watchlistName);
+        const updatedSyms = await api.loadSymbols(selectedWatchlist);
+        setSymbols(updatedSyms);
+
+        if (currentIndex !== -1 && updatedSyms.length > 0) {
+          const nextIndex = (currentIndex) % updatedSyms.length;
+          handleSelectSymbol(updatedSyms[nextIndex].symbol);
+        }
+
+        await api.setLastSelection(
+          selectedWatchlist,
+          selectedSymbol,
+          interval,
+          watchlistName
+        );
+      } catch (error) {
+        console.error('Failed to move symbol to watchlist:', error);
+      }
+      setIsPickerOpen(false);
+    },
+    [selectedSymbol, selectedWatchlist, interval, sortedSymbols, handleSelectSymbol]
+  );
+
   // Render appropriate chart panel based on mode
   const renderChartPanel = () => {
     const props = {
@@ -464,6 +523,15 @@ export default function App() {
           />
         </div>
       )}
+
+      <WatchlistPicker
+        isOpen={isPickerOpen}
+        watchlists={watchlists}
+        currentSymbol={selectedSymbol}
+        lastPickedWatchlist={lastPickedWatchlist}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={handleMoveToWatchlist}
+      />
     </div>
   );
 }

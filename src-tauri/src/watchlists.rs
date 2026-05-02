@@ -39,6 +39,10 @@ pub fn remove_symbol(watchlist_name: &str, symbol: &str) -> Result<(), String> {
     storage::remove_symbol(watchlist_name, symbol)
 }
 
+pub fn add_symbol_to_watchlist(watchlist_name: &str, symbol: &str) -> Result<(), String> {
+    storage::add_symbol_to_watchlist(watchlist_name, symbol)
+}
+
 pub fn search_symbol(symbol: &str) -> Result<Vec<crate::models::SymbolSearchResult>, String> {
     storage::search_symbols(symbol)
 }

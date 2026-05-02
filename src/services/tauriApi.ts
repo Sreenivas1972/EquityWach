@@ -34,6 +34,9 @@ export const api = {
   updateSymbolTagColor: (watchlistName: string, symbol: string, tagColor: string | null) =>
     invoke<void>("update_symbol_tag_color", { watchlistName, symbol, tagColor }),
 
+  addSymbolToWatchlist: (watchlistName: string, symbol: string) =>
+    invoke<void>("add_symbol_to_watchlist", { watchlistName, symbol }),
+
   removeSymbol: (watchlistName: string, symbol: string) =>
     invoke<void>("remove_symbol", { watchlistName, symbol }),
 
@@ -45,9 +48,10 @@ export const api = {
   setLastSelection: (
     watchlistName: string | null,
     symbol: string | null,
-    interval: string | null
+    interval: string | null,
+    lastPickedWatchlist?: string | null
   ) =>
-    invoke<void>("set_last_selection", { watchlistName, symbol, interval }),
+    invoke<void>("set_last_selection", { watchlistName, symbol, interval, lastPickedWatchlist }),
 
   // ── Chart data ────────────────────────────────────────────────────────────
   getChartData: (symbol: string, interval: string) =>

@@ -21,6 +21,7 @@ export interface LastSelection {
   watchlist_name: string | null;
   symbol: string | null;
   interval: string | null;
+  last_picked_watchlist: string | null;
 }
 
 export interface RetentionSettings {
