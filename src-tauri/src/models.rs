@@ -120,3 +120,11 @@ pub struct SymbolSearchResult {
     pub symbol: String,
     pub watchlists: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceAlert {
+    pub symbol: String,
+    pub target_price: f64,
+    pub direction: String, // "above" or "below"
+    pub created_at: String, // ISO 8601 timestamp
+}

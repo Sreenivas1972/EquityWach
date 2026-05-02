@@ -111,6 +111,7 @@ function BaseChartPanelComponent({
   > | null>(null);
   const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
   const pivotSourceRef = useRef<PivotSource | null>(null);
+  const crosshairPriceRef = useRef<number | null>(null);
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -190,6 +191,46 @@ function BaseChartPanelComponent({
       pivotSeriesRef.current = {};
     };
   }, []);
+
+  // ── Track crosshair price ─────────────────────────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const handleCrosshairMove = (param: any) => {
+      if (!param.point || !seriesRef.current) return;
+      const price = seriesRef.current.coordinateToPrice(param.point.y);
+      if (price !== null && price !== undefined && !Number.isNaN(price)) {
+        crosshairPriceRef.current = price as number;
+      }
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+    };
+  }, []);
+
+  // ── Keyboard shortcut for price alert ─────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.ctrlKey && (e.key === "+" || e.key === "=")) {
+        e.preventDefault();
+        if (!symbol || candles.length === 0) return;
+        const targetPrice = crosshairPriceRef.current;
+        if (targetPrice === null || targetPrice === undefined) return;
+
+        const latestClose = candles[candles.length - 1].close;
+        const direction = latestClose > targetPrice ? "below" : "above";
+
+        api.addPriceAlert(symbol, targetPrice, direction).catch(() => {});
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [symbol, candles]);
 
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {

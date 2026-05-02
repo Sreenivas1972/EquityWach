@@ -67,3 +67,10 @@ export interface SavedKiteCredentials {
 }
 
 export type Interval = "day" | "week" | "month";
+
+export interface PriceAlert {
+  symbol: string;
+  target_price: number;
+  direction: string;
+  created_at: string;
+}

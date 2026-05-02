@@ -5,6 +5,7 @@ import type {
   FetchSettings,
   LastSelection,
   PivotSource,
+  PriceAlert,
   RetentionSettings,
   SavedKiteCredentials,
   SymbolSearchResult,
@@ -102,4 +103,14 @@ export const api = {
   // ── Trendline Logging ─────────────────────────────────────────────────────
   logTrendlineEvent: (eventType: string, symbol: string, trendlineId: string, aTime: number, aPrice: number, bTime: number, bPrice: number) =>
     invoke<void>("log_trendline_event", { eventType, symbol, trendlineId, aTime, aPrice, bTime, bPrice }),
+
+  // ── Price Alerts ───────────────────────────────────────────────────────────
+  addPriceAlert: (symbol: string, targetPrice: number, direction: string) =>
+    invoke<void>("add_price_alert", { symbol, targetPrice, direction }),
+
+  getPriceAlerts: (symbol: string) =>
+    invoke<PriceAlert[]>("get_price_alerts", { symbol }),
+
+  getAllPriceAlerts: () =>
+    invoke<PriceAlert[]>("get_all_price_alerts"),
 };

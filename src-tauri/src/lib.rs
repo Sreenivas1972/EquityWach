@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, FetchSettings, LastSelection, PivotSource, RetentionSettings, SymbolSearchResult};
+use models::{ChartDataResponse, FetchSettings, LastSelection, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -207,6 +207,23 @@ fn clear_fib_drawings(symbol: String) -> Result<(), String> {
     storage::clear_fib_drawings(&symbol, &conn).map_err(|e| e.to_string())
 }
 
+// ─── Price Alert Commands ─────────────────────────────────────────────────
+
+#[tauri::command]
+fn add_price_alert(symbol: String, target_price: f64, direction: String) -> Result<(), String> {
+    storage::add_price_alert(&symbol, target_price, &direction)
+}
+
+#[tauri::command]
+fn get_price_alerts(symbol: String) -> Vec<PriceAlert> {
+    storage::get_price_alerts_for_symbol(&symbol)
+}
+
+#[tauri::command]
+fn get_all_price_alerts() -> Vec<PriceAlert> {
+    storage::load_price_alerts()
+}
+
 // ─── Auth Commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -258,6 +275,9 @@ pub fn run() {
             load_fib_drawings,
             save_fib_drawings,
             clear_fib_drawings,
+            add_price_alert,
+            get_price_alerts,
+            get_all_price_alerts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
