@@ -19,6 +19,7 @@ interface Props {
   onOpenWindow: (mode: DetachedWindowMode) => void;
   onUpdateSymbolColor: (symbol: string, color: string | null) => void;
   onUpdateSymbolTagColor: (symbol: string, tagColor: string | null) => void;
+  onRemoveSymbol: (symbol: string) => void;
   isDetached?: boolean;
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
@@ -43,6 +44,7 @@ export default function WatchlistPanel({
   onOpenWindow,
   onUpdateSymbolColor,
   onUpdateSymbolTagColor,
+  onRemoveSymbol,
   isDetached = false,
   sortMode,
   onSortModeChange,
@@ -242,7 +244,14 @@ export default function WatchlistPanel({
               <button
                 key={sym.symbol}
                 className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
-                onClick={() => onSelectSymbol(sym.symbol)}
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    onRemoveSymbol(sym.symbol);
+                  } else {
+                    onSelectSymbol(sym.symbol);
+                  }
+                }}
                 title={sym.symbol}
                 style={{
                   /*backgroundColor: sym.tag_color || undefined,*/

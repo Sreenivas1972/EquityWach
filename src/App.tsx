@@ -356,6 +356,24 @@ export default function App() {
     [selectedWatchlist]
   );
 
+  const handleRemoveSymbol = useCallback(
+    async (symbol: string) => {
+      if (!selectedWatchlist) return;
+
+      try {
+        await api.removeSymbol(selectedWatchlist, symbol);
+        const updatedSymbols = await api.loadSymbols(selectedWatchlist);
+        setSymbols(updatedSymbols);
+        if (selectedSymbol === symbol) {
+          setSelectedSymbol(null);
+        }
+      } catch (error) {
+        console.error('Failed to remove symbol:', error);
+      }
+    },
+    [selectedWatchlist, selectedSymbol]
+  );
+
   const handleSelectFromSearch = useCallback(
     (watchlistName: string, symbolName: string) => {
       setSelectedWatchlist(watchlistName);
@@ -439,6 +457,7 @@ export default function App() {
             onOpenWindow={handleOpenWindow}
             onUpdateSymbolColor={handleUpdateSymbolColor}
             onUpdateSymbolTagColor={handleUpdateSymbolTagColor}
+            onRemoveSymbol={handleRemoveSymbol}
             isDetached={Boolean(mode)}
             sortMode={sortMode}
             onSortModeChange={setSortMode}

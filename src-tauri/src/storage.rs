@@ -655,6 +655,17 @@ pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Op
     Ok(())
 }
 
+pub fn remove_symbol(watchlist_name: &str, symbol: &str) -> Result<(), String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM watchlist_symbols 
+         WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?1) 
+         AND symbol = ?2",
+        params![watchlist_name, symbol.to_uppercase()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn remove_watchlist(name: &str) -> Result<(), String> {
     let conn = open_db().map_err(|e| e.to_string())?;
     conn.execute(

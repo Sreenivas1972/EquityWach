@@ -45,6 +45,11 @@ fn update_symbol_tag_color(watchlist_name: String, symbol: String, tag_color: Op
 }
 
 #[tauri::command]
+fn remove_symbol(watchlist_name: String, symbol: String) -> Result<(), String> {
+    watchlists::remove_symbol(&watchlist_name, &symbol)
+}
+
+#[tauri::command]
 fn migrate_watchlists() -> Result<(), String> {
     storage::migrate_watchlists_to_sqlite()
 }
@@ -261,6 +266,7 @@ pub fn run() {
             search_symbol,
             update_symbol_color,
             update_symbol_tag_color,
+            remove_symbol,
             migrate_watchlists,
             get_last_selection,
             set_last_selection,

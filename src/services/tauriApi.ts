@@ -34,6 +34,9 @@ export const api = {
   updateSymbolTagColor: (watchlistName: string, symbol: string, tagColor: string | null) =>
     invoke<void>("update_symbol_tag_color", { watchlistName, symbol, tagColor }),
 
+  removeSymbol: (watchlistName: string, symbol: string) =>
+    invoke<void>("remove_symbol", { watchlistName, symbol }),
+
   migrateWatchlists: () => invoke<void>("migrate_watchlists"),
 
   // ── Last selection ────────────────────────────────────────────────────────
