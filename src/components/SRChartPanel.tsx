@@ -222,46 +222,58 @@ export default function SRChartPanel({
       return;
     }
 
-    const formatted = candles.map((c) => ({
-      time: toChartTime(c.time, interval),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
+    try {
+      const formatted = candles.map((c) => ({
+        time: toChartTime(c.time, interval),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
 
-    seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
+      seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
+    } catch (err) {
+      console.error('Error setting candle data:', err);
+    }
   }, [candles, interval]);
 
   // ── Render trendline drawings ─────────────────────────────────────────────
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || !seriesRef.current) return;
     const chart = chartRef.current;
 
-    Object.values(manualTrendlineSeriesRef.current).flat().forEach((series) => {
-      chart.removeSeries(series);
-    });
-    manualTrendlineSeriesRef.current = {};
+    try {
+      Object.values(manualTrendlineSeriesRef.current).forEach((series) => {
+        if (series) {
+          chart.removeSeries(series);
+        }
+      });
+      manualTrendlineSeriesRef.current = {};
 
-    trendlineDrawings.forEach((drawing) => {
-      const line = chart.addSeries(LineSeries, {
-        color: "#2563eb",
-        lineWidth: 2,
-        lineStyle: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        autoscaleInfoProvider: () => ({
-          priceRange: null, // This series will now be ignored for autoscaling
-        }),
+      trendlineDrawings.forEach((drawing) => {
+        const line = chart.addSeries(LineSeries, {
+          color: "#2563eb",
+          lineWidth: 2,
+          lineStyle: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          autoscaleInfoProvider: () => ({
+            priceRange: null,
+          }),
+        });
+
+        line.setData([
+          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+        ]);
+
+        manualTrendlineSeriesRef.current[drawing.id] = line;
       });
 
-      line.setData([
-        { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
-        { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
-      ]);
-
-      manualTrendlineSeriesRef.current[drawing.id] = line;
-    });
+      chart.timeScale().fitContent();
+    } catch (err) {
+      console.error('Error rendering trendlines:', err);
+    }
   }, [trendlineDrawings, interval]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
