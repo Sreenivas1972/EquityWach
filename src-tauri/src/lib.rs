@@ -245,6 +245,66 @@ fn delete_price_alert(id: String) -> Result<(), String> {
     storage::delete_price_alert(&id, &conn).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn check_price_alerts() -> Result<(), String> {
+    let watchlist_name = "PriceAlerts";
+    storage::remove_watchlist(watchlist_name).ok();
+
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    let alerts = storage::load_price_alerts(&conn).map_err(|e| e.to_string())?;
+
+    if alerts.is_empty() {
+        return Ok(());
+    }
+
+    let mut symbol_map: std::collections::HashMap<String, Vec<PriceAlert>> = std::collections::HashMap::new();
+    for alert in alerts {
+        symbol_map.entry(alert.symbol.clone()).or_default().push(alert);
+    }
+
+    let mut triggered_symbols: Vec<String> = Vec::new();
+
+    for (symbol, symbol_alerts) in symbol_map {
+        match kite_api::get_chart_data(&symbol, "day").await {
+            Ok(resp) => {
+                println!("Price alerts check for {}", symbol);
+                if let Some(candle) = resp.candles.last() {
+                    let prices = [candle.close, candle.open, candle.high, candle.low];
+                    for alert in &symbol_alerts {
+                        for price in prices {
+                            let diff = (price - alert.target_price).abs();
+                            let threshold = alert.target_price * 0.01;
+                            if diff <= threshold {
+                                if !triggered_symbols.contains(&symbol) {
+                                    triggered_symbols.push(symbol.clone());
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    if triggered_symbols.is_empty() {
+        storage::remove_watchlist(watchlist_name).ok();
+    } else {
+        let symbols: Vec<models::WatchlistSymbol> = triggered_symbols
+            .iter()
+            .map(|s| models::WatchlistSymbol {
+                symbol: s.clone(),
+                color: None,
+                tag_color: None,
+            })
+            .collect();
+        storage::save_watchlist(watchlist_name, &symbols).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 // ─── Auth Commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -264,6 +324,42 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        
+        .setup(|app| {
+            use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+            let alerts_item = MenuItem::with_id(app, "check_price_alerts", "Check price alerts", true, None::<&str>)?;
+            let alerts_menu = SubmenuBuilder::new(app, "Alerts")
+                .item(&alerts_item)
+                .build()?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit EquityWatcher", true, Some("CmdO+Q"))?;
+            let menu = MenuBuilder::new(app)
+                .item(&alerts_menu)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+            menu.set_as_app_menu()?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            match event.id().0.as_str() {
+                "check_price_alerts" => {
+                    tauri::async_runtime::spawn(async move {
+                        match check_price_alerts().await {
+                            Ok(()) => {
+                                println!("Price alerts check completed");
+                            }
+                            Err(e) => {
+                                eprintln!("Price alerts check failed: {}", e);
+                            }
+                        }
+                    });
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             list_watchlists,
@@ -302,6 +398,7 @@ pub fn run() {
             get_price_alerts,
             get_all_price_alerts,
             delete_price_alert,
+            check_price_alerts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

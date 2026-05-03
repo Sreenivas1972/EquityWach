@@ -123,4 +123,7 @@ export const api = {
 
   deletePriceAlert: (id: string) =>
     invoke<void>("delete_price_alert", { id }),
+
+  checkPriceAlerts: () =>
+    invoke<void>("check_price_alerts"),
 };
