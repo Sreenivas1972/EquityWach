@@ -13,10 +13,15 @@ type TrendlineAnchor = {
   price: number;
 };
 
+type DrawingType = "trendline" | "channel";
+
 type TrendlineDrawing = {
   id: string;
+  type: DrawingType;
   anchorA: TrendlineAnchor;
   anchorB: TrendlineAnchor;
+  anchorC?: TrendlineAnchor;
+  anchorD?: TrendlineAnchor;
 };
 
 function parseTrendlineDrawingPayload(raw: string[]): TrendlineDrawing[] {
@@ -66,16 +71,22 @@ export default function SRChartPanel({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const manualTrendlineSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const previewLineRef = useRef<ReturnType<ReturnType<typeof createChart>["addSeries"]> | null>(null);
 
   const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
     const [showDrawings, setShowDrawings] = useState(false);
+    const [drawingType, setDrawingType] = useState<DrawingType>("trendline");
   const [isDrawingMode, setIsDrawingMode] = useState(false);
     const [anchorA, setAnchorA] = useState<TrendlineAnchor | null>(null);
-  const [editingState, setEditingState] = useState<{ trendlineId: string; anchor: "A" | "B" } | null>(null);
+    const [anchorB, setAnchorB] = useState<TrendlineAnchor | null>(null);
+  const [previewLine, setPreviewLine] = useState<TrendlineAnchor[] | null>(null);
+  const [editingState, setEditingState] = useState<{ trendlineId: string; anchor: "A" | "B" | "C" | "D" } | null>(null);
 
   useEffect(() => {
     if (isDrawingMode) {
       setEditingState(null);
+      setAnchorB(null);
+      setPreviewLine(null);
     }
   }, [isDrawingMode]);
 
@@ -190,22 +201,57 @@ export default function SRChartPanel({
 
       const clickedPoint: TrendlineAnchor = { time: clickedTime, price };
 
-      // Case 1: Drawing a new trendline
+      // Case 1: Drawing a new trendline or channel
       if (isDrawingMode) {
         if (!anchorA) {
           setAnchorA(clickedPoint);
+          setPreviewLine(null);
+        } else if (!anchorB) {
+          if (drawingType === "trendline") {
+            const symbolValue = symbol;
+            if (!symbolValue) return;
+
+            const drawing: TrendlineDrawing = {
+              id: `trendline-${Date.now()}`,
+              type: "trendline",
+              anchorA: anchorA!,
+              anchorB: clickedPoint,
+            };
+            const nextDrawings = [...trendlineDrawings, drawing];
+            setTrendlineDrawings(nextDrawings);
+            setAnchorA(null);
+            setAnchorB(null);
+            setIsDrawingMode(false);
+            api.saveSrDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
+          } else {
+            setAnchorB(clickedPoint);
+            setPreviewLine([anchorA!, clickedPoint]);
+          }
         } else {
           const symbolValue = symbol;
           if (!symbolValue) return;
 
+          const deltaPrice = anchorB!.price - anchorA!.price;
+          const deltaTime = anchorB!.time - anchorA!.time;
+          const anchorC = clickedPoint;
+          const anchorD = {
+            time: anchorC.time + deltaTime,
+            price: anchorC.price + deltaPrice,
+          };
+
           const drawing: TrendlineDrawing = {
-            id: `trendline-${Date.now()}`,
-            anchorA,
-            anchorB: clickedPoint,
+            id: `channel-${Date.now()}`,
+            type: "channel",
+            anchorA: anchorA!,
+            anchorB: anchorB!,
+            anchorC,
+            anchorD,
           };
           const nextDrawings = [...trendlineDrawings, drawing];
           setTrendlineDrawings(nextDrawings);
           setAnchorA(null);
+          setAnchorB(null);
+          setPreviewLine(null);
           setIsDrawingMode(false);
           api.saveSrDrawings(symbolValue, JSON.stringify({ drawings: nextDrawings })).catch(() => {});
         }
@@ -217,10 +263,10 @@ export default function SRChartPanel({
         const { trendlineId, anchor } = editingState;
         const nextDrawings = trendlineDrawings.map((d) => {
           if (d.id === trendlineId) {
-            return {
-              ...d,
-              [anchor === 'A' ? 'anchorA' : 'anchorB']: clickedPoint,
-            };
+            if (anchor === "A") return { ...d, anchorA: clickedPoint };
+            if (anchor === "B") return { ...d, anchorB: clickedPoint };
+            if (anchor === "C" && d.anchorC) return { ...d, anchorC: clickedPoint };
+            if (anchor === "D" && d.anchorD) return { ...d, anchorD: clickedPoint };
           }
           return d;
         });
@@ -236,28 +282,25 @@ export default function SRChartPanel({
       // Case 3: Selecting an anchor to edit
       const CLICK_PROXIMITY_THRESHOLD = 10; // pixels
       for (const drawing of trendlineDrawings) {
-        const anchorACoord = {
-          x: chart.timeScale().timeToCoordinate(toChartTime(drawing.anchorA.time, interval)),
-          y: seriesRef.current.priceToCoordinate(drawing.anchorA.price),
-        };
-        const anchorBCoord = {
-          x: chart.timeScale().timeToCoordinate(toChartTime(drawing.anchorB.time, interval)),
-          y: seriesRef.current.priceToCoordinate(drawing.anchorB.price),
-        };
+        const anchors = [
+          { key: "A", coord: drawing.anchorA },
+          { key: "B", coord: drawing.anchorB },
+          ...(drawing.anchorC ? [{ key: "C", coord: drawing.anchorC }] : []),
+          ...(drawing.anchorD ? [{ key: "D", coord: drawing.anchorD }] : []),
+        ];
 
-        if (anchorACoord.x !== null && anchorACoord.y !== null) {
-          const distanceA = Math.hypot(param.point.x - anchorACoord.x, param.point.y - anchorACoord.y);
-          if (distanceA < CLICK_PROXIMITY_THRESHOLD) {
-            setEditingState({ trendlineId: drawing.id, anchor: 'A' });
-            return;
-          }
-        }
+        for (const { key, coord } of anchors) {
+          const anchorCoord = {
+            x: chart.timeScale().timeToCoordinate(toChartTime(coord.time, interval)),
+            y: seriesRef.current.priceToCoordinate(coord.price),
+          };
 
-        if (anchorBCoord.x !== null && anchorBCoord.y !== null) {
-          const distanceB = Math.hypot(param.point.x - anchorBCoord.x, param.point.y - anchorBCoord.y);
-          if (distanceB < CLICK_PROXIMITY_THRESHOLD) {
-            setEditingState({ trendlineId: drawing.id, anchor: 'B' });
-            return;
+          if (anchorCoord.x !== null && anchorCoord.y !== null) {
+            const distance = Math.hypot(param.point.x - anchorCoord.x, param.point.y - anchorCoord.y);
+            if (distance < CLICK_PROXIMITY_THRESHOLD) {
+              setEditingState({ trendlineId: drawing.id, anchor: key as "A" | "B" | "C" | "D" });
+              return;
+            }
           }
         }
       }
@@ -267,7 +310,7 @@ export default function SRChartPanel({
     return () => {
       chart.unsubscribeClick(handleChartClick);
     };
-  }, [anchorA, trendlineDrawings, isDrawingMode, symbol, editingState, interval]);
+  }, [anchorA, anchorB, previewLine, trendlineDrawings, isDrawingMode, symbol, editingState, interval]);
 
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
@@ -292,7 +335,7 @@ export default function SRChartPanel({
     }
   }, [candles, interval]);
 
-  // ── Render trendline drawings ─────────────────────────────────────────────
+  // ── Render trendline and channel drawings ────────────────────────────────
   useEffect(() => {
     if (!chartRef.current || !seriesRef.current) return;
     const chart = chartRef.current;
@@ -306,23 +349,83 @@ export default function SRChartPanel({
       manualTrendlineSeriesRef.current = {};
 
       trendlineDrawings.forEach((drawing) => {
-        const line = chart.addSeries(LineSeries, {
-          color: "#2563eb",
-          lineWidth: 2,
-          lineStyle: 1,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          autoscaleInfoProvider: () => ({
-            priceRange: null,
-          }),
-        });
+        if (drawing.type === "channel" && drawing.anchorC && drawing.anchorD) {
+          const line1 = chart.addSeries(LineSeries, {
+            color: "#2563eb",
+            lineWidth: 2,
+            lineStyle: 1,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            autoscaleInfoProvider: () => ({
+              priceRange: null,
+            }),
+          });
 
-        line.setData([
-          { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
-          { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
-        ]);
+          line1.setData([
+            { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+            { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+          ]);
 
-        manualTrendlineSeriesRef.current[drawing.id] = line;
+          const line2 = chart.addSeries(LineSeries, {
+            color: "#2563eb",
+            lineWidth: 2,
+            lineStyle: 1,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            autoscaleInfoProvider: () => ({
+              priceRange: null,
+            }),
+          });
+
+          line2.setData([
+            { time: toChartTime(drawing.anchorC.time, interval), value: drawing.anchorC.price },
+            { time: toChartTime(drawing.anchorD.time, interval), value: drawing.anchorD.price },
+          ]);
+
+          const midA = {
+            time: toChartTime(drawing.anchorA.time, interval),
+            value: (drawing.anchorA.price + drawing.anchorC.price) / 2,
+          };
+          const midB = {
+            time: toChartTime(drawing.anchorB.time, interval),
+            value: (drawing.anchorB.price + drawing.anchorD.price) / 2,
+          };
+
+          const midLine = chart.addSeries(LineSeries, {
+            color: "#2563eb80",
+            lineWidth: 1,
+            lineStyle: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            autoscaleInfoProvider: () => ({
+              priceRange: null,
+            }),
+          });
+
+          midLine.setData([midA, midB]);
+
+          manualTrendlineSeriesRef.current[`${drawing.id}-1`] = line1;
+          manualTrendlineSeriesRef.current[`${drawing.id}-2`] = line2;
+          manualTrendlineSeriesRef.current[`${drawing.id}-mid`] = midLine;
+        } else {
+          const line = chart.addSeries(LineSeries, {
+            color: "#2563eb",
+            lineWidth: 2,
+            lineStyle: 1,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            autoscaleInfoProvider: () => ({
+              priceRange: null,
+            }),
+          });
+
+          line.setData([
+            { time: toChartTime(drawing.anchorA.time, interval), value: drawing.anchorA.price },
+            { time: toChartTime(drawing.anchorB.time, interval), value: drawing.anchorB.price },
+          ]);
+
+          manualTrendlineSeriesRef.current[drawing.id] = line;
+        }
       });
 
       chart.timeScale().fitContent();
@@ -330,6 +433,38 @@ export default function SRChartPanel({
       console.error("Error rendering trendlines:", err);
     }
   }, [trendlineDrawings, interval]);
+
+  // ── Render preview line while drawing channel ─────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    if (previewLineRef.current) {
+      chart.removeSeries(previewLineRef.current);
+      previewLineRef.current = null;
+    }
+
+    if (previewLine && previewLine.length === 2) {
+      const line = chart.addSeries(LineSeries, {
+        color: "#94a3b8",
+        lineWidth: 2,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        autoscaleInfoProvider: () => ({
+          priceRange: null,
+        }),
+      });
+
+      line.setData([
+        { time: toChartTime(previewLine[0].time, interval), value: previewLine[0].price },
+        { time: toChartTime(previewLine[1].time, interval), value: previewLine[1].price },
+      ]);
+
+      previewLineRef.current = line;
+    }
+  }, [previewLine, interval]);
 
   // ── Highlight edited trendline ──────────────────────────────────────────
   const prevEditingStateRef = useRef(editingState);
@@ -406,6 +541,15 @@ export default function SRChartPanel({
       <div className="chart-content-wrapper">
         <div className="chart-main">
           <div className="sr-controls">
+              <select
+                className="sr-action-button"
+                value={drawingType}
+                onChange={(e) => setDrawingType(e.target.value as DrawingType)}
+                style={{ marginRight: "8px" }}
+              >
+                <option value="trendline">Trendline</option>
+                <option value="channel">Channel</option>
+              </select>
               <button
                 type="button"
                 className="sr-action-button"
@@ -415,10 +559,11 @@ export default function SRChartPanel({
                   } else {
                     setIsDrawingMode((mode) => !mode);
                     setAnchorA(null);
+                    setAnchorB(null);
                   }
                 }}
               >
-                {editingState ? "Cancel edit" : isDrawingMode ? "Cancel trendline" : "Draw trendline"}
+                {editingState ? "Cancel edit" : isDrawingMode ? "Cancel" : `Draw ${drawingType}`}
               </button>
             <button
               type="button"
@@ -438,13 +583,13 @@ export default function SRChartPanel({
             </button>
             {isDrawingMode && (
               <span className="sr-hint">
-                {isDrawingMode
-                ? anchorA
-                  ? "Click the chart to place the second trendline anchor."
-                  : "Click the chart to place the first trendline anchor."
-                : editingState
-                ? "Click the chart to move the selected anchor."
-                : ""}
+                {drawingType === "trendline"
+                  ? anchorA
+                    ? "Click the chart to place the second trendline anchor."
+                    : "Click the chart to place the first trendline anchor."
+                  : anchorA
+                    ? "Click the chart to place the third point (determines channel width)."
+                    : "Click the chart to place the first channel anchor."}
               </span>
             )}
           </div>
@@ -474,13 +619,16 @@ export default function SRChartPanel({
           <div className="drawings-sidebar" style={{ width: '300px', borderLeft: '1px solid #ddd', padding: '10px' }}>
             {trendlineDrawings.length > 0 && (
             <div className="sr-drawing-list">
-              <strong>Saved trendlines</strong>
+              <strong>Saved drawings</strong>
               {trendlineDrawings.map((drawing) => (
                 <div key={drawing.id} className="sr-drawing-item">
                   <span>
-                    Trendline: 
+                    {drawing.type === "channel" ? "Channel" : "Trendline"}: 
                     {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
                     {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+                    {drawing.type === "channel" && drawing.anchorC && drawing.anchorD && (
+                      <>, {new Date(drawing.anchorC.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorC.price} → {new Date(drawing.anchorD.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorD.price}</>
+                    )}
                   </span>
                   <button
                     type="button"
