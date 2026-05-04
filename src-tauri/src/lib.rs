@@ -324,42 +324,6 @@ pub fn run() {
     }
 
     tauri::Builder::default()
-        
-        .setup(|app| {
-            use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
-            let alerts_item = MenuItem::with_id(app, "check_price_alerts", "Check price alerts", true, None::<&str>)?;
-            let alerts_menu = SubmenuBuilder::new(app, "Alerts")
-                .item(&alerts_item)
-                .build()?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit EquityWatcher", true, Some("CmdO+Q"))?;
-            let menu = MenuBuilder::new(app)
-                .item(&alerts_menu)
-                .separator()
-                .item(&quit_item)
-                .build()?;
-            menu.set_as_app_menu()?;
-            Ok(())
-        })
-        .on_menu_event(|app, event| {
-            match event.id().0.as_str() {
-                "check_price_alerts" => {
-                    tauri::async_runtime::spawn(async move {
-                        match check_price_alerts().await {
-                            Ok(()) => {
-                                println!("Price alerts check completed");
-                            }
-                            Err(e) => {
-                                eprintln!("Price alerts check failed: {}", e);
-                            }
-                        }
-                    });
-                }
-                "quit" => {
-                    app.exit(0);
-                }
-                _ => {}
-            }
-        })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             list_watchlists,

@@ -483,6 +483,19 @@ export default function SettingsPanel({ onClose }: Props) {
           {watchlistMsg && <p className="settings-msg">{watchlistMsg}</p>}
         </section>
 
+        {/* ── Price Alerts ───────────────────────────────────────────────── */}
+        <section className="settings-section">
+          <h3>Price Alerts</h3>
+          <p className="settings-hint">
+            Check all price alerts and create a watchlist with symbols that have triggered alerts.
+          </p>
+          <div className="form-actions">
+            <button className="btn-primary" onClick={() => api.checkPriceAlerts()}>
+              Check Price Alerts
+            </button>
+          </div>
+        </section>
+
         {/* ── Instruments cache ────────────────────────────────────────── */}
         <section className="settings-section">
           <h3>NSE Instruments Cache</h3>
