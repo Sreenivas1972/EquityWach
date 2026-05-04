@@ -65,11 +65,10 @@ export default function WatchlistPanel({
   const [collapsed, setCollapsed] = useState(false);
   const symbolListRef = useRef<HTMLDivElement>(null);
 
-  // Color mapping for keyboard shortcuts
   const statusColors: Record<string, string> = {
-    'r': '#ff4d4d', // red
-    'y': '#ffcc00', // dark yellow
-    'g': '#3fb950', // light green
+    'r': 'red',
+    'y': 'yellow',
+    'g': 'green',
   };
 
   const tagColors: Record<string, string> = {
@@ -80,10 +79,16 @@ export default function WatchlistPanel({
     'p': 'pink',
   };
 
+  const statusColorDisplay: Record<string, string> = {
+    'red': '#ff4d4d',
+    'yellow': '#ffcc00',
+    'green': '#3fb950',
+  };
+
   const statusColorOptions = [
-    { value: '#ff4d4d', label: 'Red' },
-    { value: '#ffcc00', label: 'Yellow' },
-    { value: '#3fb950', label: 'Green' },
+    { value: 'red', label: 'Red' },
+    { value: 'yellow', label: 'Yellow' },
+    { value: 'green', label: 'Green' },
   ];
 
   const tagColorOptions = [
@@ -93,6 +98,11 @@ export default function WatchlistPanel({
     { value: 'orange', label: 'Orange' },
     { value: 'pink', label: 'Pink' },
   ];
+
+  function getDisplayColor(color: string | null): string | undefined {
+    if (!color) return undefined;
+    return statusColorDisplay[color] || color;
+  }
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
@@ -318,7 +328,7 @@ export default function WatchlistPanel({
                   onClick={() => onSelectSymbol(sym.symbol)}
                   title={`${sym.symbol} (${sym.watchlist_name})`}
                   style={{
-                    borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
+                    borderRight: sym.color ? `10px solid ${getDisplayColor(sym.color)}` : undefined,
                     borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
                   }}
                 >
@@ -341,7 +351,7 @@ export default function WatchlistPanel({
                   }}
                   title={sym.symbol}
                   style={{
-                    borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
+                    borderRight: sym.color ? `10px solid ${getDisplayColor(sym.color)}` : undefined,
                     borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
                   }}
                 >
