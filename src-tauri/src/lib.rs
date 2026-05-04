@@ -296,6 +296,7 @@ async fn check_price_alerts() -> Result<(), String> {
     if triggered_symbols.is_empty() {
         storage::remove_watchlist(watchlist_name).ok();
     } else {
+        println!("Added {} symbols to price alerts watchlist", triggered_symbols.len());
         let symbols: Vec<models::WatchlistSymbol> = triggered_symbols
             .iter()
             .map(|s| models::WatchlistSymbol {
