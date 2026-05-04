@@ -76,3 +76,10 @@ export interface PriceAlert {
   direction: string;
   created_at: string;
 }
+
+export interface ColorFilteredSymbol {
+  symbol: string;
+  watchlist_name: string;
+  color: string | null;
+  tag_color: string | null;
+}

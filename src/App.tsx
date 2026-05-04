@@ -10,7 +10,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
 import WatchlistPicker from "./components/WatchlistPicker";
 import { api } from "./services/tauriApi";
-import type { CandleData, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
+import type { CandleData, ColorFilteredSymbol, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
 
 // ─── Watchlist sort helpers ───────────────────────────────────────────────────
@@ -79,6 +79,11 @@ export default function App() {
 
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [lastPickedWatchlist, setLastPickedWatchlist] = useState<string | null>(null);
+
+  const [colorFilterMode, setColorFilterMode] = useState(false);
+  const [colorFilterValue, setColorFilterValue] = useState<{ color: string | null; tagColor: string | null }>({ color: null, tagColor: null });
+  const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
+  const [isLoadingColorFilter, setIsLoadingColorFilter] = useState(false);
 
   useEffect(() => {
     async function boot() {
@@ -281,6 +286,7 @@ export default function App() {
       setSelectedWatchlist(name);
       setSymbols([]);
       setIsLoadingSymbols(true);
+      setColorFilterMode(false);
       try {
         const syms = await api.loadSymbols(name);
         setSymbols(syms);
@@ -293,6 +299,39 @@ export default function App() {
     },
     [selectedSymbol, interval]
   );
+
+  useEffect(() => {
+    if (!colorFilterMode || (!colorFilterValue.color && !colorFilterValue.tagColor)) {
+      setColorFilteredSymbols([]);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadFilteredSymbols() {
+      setIsLoadingColorFilter(true);
+      try {
+        const syms = await api.getSymbolsByColor(colorFilterValue.color, colorFilterValue.tagColor);
+        if (!cancelled) {
+          setColorFilteredSymbols(syms);
+        }
+      } catch (error) {
+        console.error('Failed to load filtered symbols:', error);
+        if (!cancelled) {
+          setColorFilteredSymbols([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingColorFilter(false);
+        }
+      }
+    }
+    loadFilteredSymbols();
+    return () => { cancelled = true; };
+  }, [colorFilterMode, colorFilterValue]);
+
+  const handleColorFilterChange = useCallback((color: string | null, tagColor: string | null) => {
+    setColorFilterValue({ color, tagColor });
+  }, []);
 
   const handleSelectSymbol = useCallback(
     (sym: string) => {
@@ -398,13 +437,17 @@ export default function App() {
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && sortedSymbols.length > 0 && selectedSymbol) {
-        event.preventDefault(); // Prevent page scroll
+      const currentSymbols = colorFilterMode 
+        ? colorFilteredSymbols.map(s => ({ symbol: s.symbol, color: s.color, tag_color: s.tag_color }))
+        : sortedSymbols;
+      
+      if (event.code === 'Space' && currentSymbols.length > 0 && selectedSymbol) {
+        event.preventDefault();
         
-        const currentIndex = sortedSymbols.findIndex(s => s.symbol === selectedSymbol);
+        const currentIndex = currentSymbols.findIndex(s => s.symbol === selectedSymbol);
         if (currentIndex !== -1) {
-          const nextIndex = (currentIndex + 1) % sortedSymbols.length;
-          const nextSymbol = sortedSymbols[nextIndex].symbol;
+          const nextIndex = (currentIndex + 1) % currentSymbols.length;
+          const nextSymbol = currentSymbols[nextIndex].symbol;
           handleSelectSymbol(nextSymbol);
         }
       }
@@ -414,7 +457,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sortedSymbols, selectedSymbol, handleSelectSymbol]);
+  }, [sortedSymbols, colorFilteredSymbols, colorFilterMode, selectedSymbol, handleSelectSymbol]);
 
   // Keyboard shortcut: Cmd+M to open watchlist picker
   useEffect(() => {
@@ -520,6 +563,12 @@ export default function App() {
             isDetached={Boolean(mode)}
             sortMode={sortMode}
             onSortModeChange={setSortMode}
+            colorFilterMode={colorFilterMode}
+            colorFilterValue={colorFilterValue}
+            onColorFilterChange={handleColorFilterChange}
+            colorFilteredSymbols={colorFilteredSymbols}
+            isLoadingColorFilter={isLoadingColorFilter}
+            onEnableColorFilterMode={() => setColorFilterMode(true)}
           />
         </div>
       )}

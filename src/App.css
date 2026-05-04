@@ -556,6 +556,44 @@ body {
   color: #fff;
 }
 
+/* ── Color filter controls ─────────────────────────────────────────────────── */
+.color-filter-controls {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #444;
+  flex-shrink: 0;
+}
+
+.color-filter-select {
+  flex: 1;
+  padding: 4px 6px;
+  background: #444;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.color-filter-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.symbol-name {
+  flex: 1;
+}
+
+.symbol-watchlist-badge {
+  font-size: 9px;
+  color: #888;
+  background: #3a3a3a;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+
 
 /* ── Symbol list ───────────────────────────────────────────────────────────── */
 .symbol-list {

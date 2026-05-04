@@ -948,3 +948,140 @@ pub fn delete_price_alert(id: &str, conn: &Connection) -> SqlResult<()> {
     conn.execute("DELETE FROM price_alerts WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    
+    let mut results: Vec<crate::models::ColorFilteredSymbol> = Vec::new();
+
+    let color_mappings: std::collections::HashMap<&str, Vec<&str>> = [
+        ("#ff4d4d", vec!["#ff4d4d", "red"]),
+        ("#ffcc00", vec!["#ffcc00", "yellow"]),
+        ("#3fb950", vec!["#3fb950", "green"]),
+        ("red", vec!["#ff4d4d", "red"]),
+        ("yellow", vec!["#ffcc00", "yellow"]),
+        ("green", vec!["#3fb950", "green"]),
+    ].iter().cloned().collect();
+    
+    fn get_color_variants<'a>(color: &str, mappings: &'a std::collections::HashMap<&str, Vec<&str>>) -> Vec<String> {
+        if let Some(variants) = mappings.get(color) {
+            variants.iter().map(|s| s.to_string()).collect()
+        } else {
+            vec![color.to_string()]
+        }
+    }
+    
+    match (color, tag_color) {
+        (Some(c), Some(t)) => {
+            let color_values = get_color_variants(c, &color_mappings);
+            let tag_values = get_color_variants(t, &color_mappings);
+            
+            let color_placeholders: Vec<String> = color_values.iter().map(|_| "?".to_string()).collect();
+            let tag_placeholders: Vec<String> = tag_values.iter().map(|_| "?".to_string()).collect();
+            
+            let sql = format!(
+                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                 FROM watchlist_symbols ws 
+                 JOIN watchlists w ON ws.watchlist_id = w.id 
+                 WHERE ws.color IN ({}) 
+                 AND ws.tag_color IN ({})
+                 ORDER BY ws.symbol",
+                color_placeholders.join(","),
+                tag_placeholders.join(",")
+            );
+            
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            
+            let mut params: Vec<String> = color_values;
+            params.extend(tag_values);
+            
+            let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+            
+            let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                Ok(crate::models::ColorFilteredSymbol {
+                    symbol: row.get(0)?,
+                    watchlist_name: row.get(1)?,
+                    color: row.get(2)?,
+                    tag_color: row.get(3)?,
+                })
+            }).map_err(|e| e.to_string())?;
+            
+            for row in rows {
+                if let Ok(s) = row {
+                    results.push(s);
+                }
+            }
+        }
+        (Some(c), None) => {
+            let color_values = get_color_variants(c, &color_mappings);
+            
+            let placeholders: Vec<String> = color_values.iter().map(|_| "?".to_string()).collect();
+            
+            let sql = format!(
+                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                 FROM watchlist_symbols ws 
+                 JOIN watchlists w ON ws.watchlist_id = w.id 
+                 WHERE ws.color IN ({}) 
+                 ORDER BY ws.symbol",
+                placeholders.join(",")
+            );
+            
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            
+            let params: Vec<&dyn rusqlite::ToSql> = color_values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+            
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok(crate::models::ColorFilteredSymbol {
+                    symbol: row.get(0)?,
+                    watchlist_name: row.get(1)?,
+                    color: row.get(2)?,
+                    tag_color: row.get(3)?,
+                })
+            }).map_err(|e| e.to_string())?;
+            
+            for row in rows {
+                if let Ok(s) = row {
+                    results.push(s);
+                }
+            }
+        }
+        (None, Some(t)) => {
+            let tag_values = get_color_variants(t, &color_mappings);
+            
+            let placeholders: Vec<String> = tag_values.iter().map(|_| "?".to_string()).collect();
+            
+            let sql = format!(
+                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                 FROM watchlist_symbols ws 
+                 JOIN watchlists w ON ws.watchlist_id = w.id 
+                 WHERE ws.tag_color IN ({}) 
+                 ORDER BY ws.symbol",
+                placeholders.join(",")
+            );
+            
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            
+            let params: Vec<&dyn rusqlite::ToSql> = tag_values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+            
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok(crate::models::ColorFilteredSymbol {
+                    symbol: row.get(0)?,
+                    watchlist_name: row.get(1)?,
+                    color: row.get(2)?,
+                    tag_color: row.get(3)?,
+                })
+            }).map_err(|e| e.to_string())?;
+            
+            for row in rows {
+                if let Ok(s) = row {
+                    results.push(s);
+                }
+            }
+        }
+        (None, None) => {
+            return Err("Either color or tag_color must be provided".to_string());
+        }
+    }
+    
+    Ok(results)
+}

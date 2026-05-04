@@ -46,3 +46,7 @@ pub fn add_symbol_to_watchlist(watchlist_name: &str, symbol: &str) -> Result<(),
 pub fn search_symbol(symbol: &str) -> Result<Vec<crate::models::SymbolSearchResult>, String> {
     storage::search_symbols(symbol)
 }
+
+pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    storage::get_symbols_by_color(color, tag_color)
+}

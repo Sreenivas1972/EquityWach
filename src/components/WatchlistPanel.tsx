@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Interval, WatchlistEntry, WatchlistSymbol } from "../types";
+import type { ColorFilteredSymbol, Interval, WatchlistEntry, WatchlistSymbol } from "../types";
 import type { SortMode } from "../App";
 import IntervalSelector from "./IntervalSelector";
 
@@ -23,6 +23,12 @@ interface Props {
   isDetached?: boolean;
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
+  colorFilterMode: boolean;
+  colorFilterValue: { color: string | null; tagColor: string | null };
+  onColorFilterChange: (color: string | null, tagColor: string | null) => void;
+  colorFilteredSymbols: ColorFilteredSymbol[];
+  isLoadingColorFilter: boolean;
+  onEnableColorFilterMode: () => void;
 }
 
 /** Strip "EXCHANGE:" prefix for display purposes */
@@ -48,6 +54,12 @@ export default function WatchlistPanel({
   isDetached = false,
   sortMode,
   onSortModeChange,
+  colorFilterMode,
+  colorFilterValue,
+  onColorFilterChange,
+  colorFilteredSymbols,
+  isLoadingColorFilter,
+  onEnableColorFilterMode,
 }: Props) {
   const canOpenWindow = Boolean(selectedSymbol);
   const [collapsed, setCollapsed] = useState(false);
@@ -67,6 +79,20 @@ export default function WatchlistPanel({
     'i': 'indigo',
     'p': 'pink',
   };
+
+  const statusColorOptions = [
+    { value: '#ff4d4d', label: 'Red' },
+    { value: '#ffcc00', label: 'Yellow' },
+    { value: '#3fb950', label: 'Green' },
+  ];
+
+  const tagColorOptions = [
+    { value: 'violet', label: 'Violet' },
+    { value: 'indigo', label: 'Indigo' },
+    { value: 'blue', label: 'Blue' },
+    { value: 'orange', label: 'Orange' },
+    { value: 'pink', label: 'Pink' },
+  ];
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
@@ -185,20 +211,58 @@ export default function WatchlistPanel({
               </button>
             </div>
           ) : (
-            <select
-              className="watchlist-select"
-              value={selectedWatchlist ?? ""}
-              onChange={(e) => onSelectWatchlist(e.target.value)}
-            >
-              <option value="" disabled>
-                — choose watchlist —
-              </option>
-              {watchlists.map((w) => (
-                <option key={w.name} value={w.name}>
-                  {w.name}
+            <>
+              <select
+                className="watchlist-select"
+                value={colorFilterMode ? "__color_filter__" : (selectedWatchlist ?? "")}
+                onChange={(e) => {
+                  if (e.target.value === "__color_filter__") {
+                    onEnableColorFilterMode();
+                    return;
+                  }
+                  onSelectWatchlist(e.target.value);
+                }}
+              >
+                <option value="" disabled>
+                  — choose watchlist —
                 </option>
-              ))}
-            </select>
+                <option value="__color_filter__">🎨 Color Filter</option>
+                {watchlists.map((w) => (
+                  <option key={w.name} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+
+              {colorFilterMode && (
+                <div className="color-filter-controls">
+                  <select
+                    className="color-filter-select"
+                    value={colorFilterValue.color ?? ""}
+                    onChange={(e) => onColorFilterChange(e.target.value || null, colorFilterValue.tagColor)}
+                  >
+                    <option value="">Status: All</option>
+                    {statusColorOptions.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="color-filter-select"
+                    value={colorFilterValue.tagColor ?? ""}
+                    onChange={(e) => onColorFilterChange(colorFilterValue.color, e.target.value || null)}
+                  >
+                    <option value="">Tag: All</option>
+                    {tagColorOptions.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
           )}
 
           {/* Interval selector */}
@@ -234,34 +298,57 @@ export default function WatchlistPanel({
 
           {/* Symbol list */}
           <div className="symbol-list" ref={symbolListRef}>
-            {isLoadingSymbols && (
+            {isLoadingColorFilter && colorFilterMode && (
               <div className="symbol-list-loading">Loading symbols…</div>
             )}
-            {!isLoadingSymbols && selectedWatchlist && symbols.length === 0 && (
+            {isLoadingSymbols && !colorFilterMode && (
+              <div className="symbol-list-loading">Loading symbols…</div>
+            )}
+            {!isLoadingSymbols && !colorFilterMode && selectedWatchlist && symbols.length === 0 && (
               <div className="symbol-list-empty">No symbols found in file.</div>
             )}
-            {symbols.map((sym) => (
-              <button
-                key={sym.symbol}
-                className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
-                onClick={(e) => {
-                  if (e.ctrlKey || e.metaKey) {
-                    e.preventDefault();
-                    onRemoveSymbol(sym.symbol);
-                  } else {
-                    onSelectSymbol(sym.symbol);
-                  }
-                }}
-                title={sym.symbol}
-                style={{
-                  //backgroundColor: sym.color || undefined,
-                  borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
-                  borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
-                }}
-              >
-                {displaySymbol(sym.symbol)}
-              </button>
-            ))}
+            {!isLoadingColorFilter && colorFilterMode && colorFilteredSymbols.length === 0 && (colorFilterValue.color || colorFilterValue.tagColor) && (
+              <div className="symbol-list-empty">No symbols match the filter.</div>
+            )}
+            {colorFilterMode ? (
+              colorFilteredSymbols.map((sym) => (
+                <button
+                  key={`${sym.symbol}-${sym.watchlist_name}`}
+                  className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
+                  onClick={() => onSelectSymbol(sym.symbol)}
+                  title={`${sym.symbol} (${sym.watchlist_name})`}
+                  style={{
+                    borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
+                    borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
+                  }}
+                >
+                  <span className="symbol-name">{displaySymbol(sym.symbol)}</span>
+                  <span className="symbol-watchlist-badge">{sym.watchlist_name}</span>
+                </button>
+              ))
+            ) : (
+              symbols.map((sym) => (
+                <button
+                  key={sym.symbol}
+                  className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
+                  onClick={(e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                      e.preventDefault();
+                      onRemoveSymbol(sym.symbol);
+                    } else {
+                      onSelectSymbol(sym.symbol);
+                    }
+                  }}
+                  title={sym.symbol}
+                  style={{
+                    borderRight: sym.color ? `10px solid ${sym.color}` : undefined,
+                    borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
+                  }}
+                >
+                  {displaySymbol(sym.symbol)}
+                </button>
+              ))
+            )}
           </div>
         </>
       )}

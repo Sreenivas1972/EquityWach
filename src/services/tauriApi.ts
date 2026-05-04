@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AuthStatus,
   ChartDataResponse,
+  ColorFilteredSymbol,
   FetchSettings,
   LastSelection,
   PivotSource,
@@ -27,6 +28,9 @@ export const api = {
 
   searchSymbol: (symbol: string) =>
     invoke<SymbolSearchResult[]>("search_symbol", { symbol }),
+
+  getSymbolsByColor: (color: string | null, tagColor: string | null) =>
+    invoke<ColorFilteredSymbol[]>("get_symbols_by_color", { color, tagColor }),
 
   updateSymbolColor: (watchlistName: string, symbol: string, color: string | null) =>
     invoke<void>("update_symbol_color", { watchlistName, symbol, color }),

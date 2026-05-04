@@ -130,3 +130,11 @@ pub struct PriceAlert {
     pub direction: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColorFilteredSymbol {
+    pub symbol: String,
+    pub watchlist_name: String,
+    pub color: Option<String>,
+    pub tag_color: Option<String>,
+}
