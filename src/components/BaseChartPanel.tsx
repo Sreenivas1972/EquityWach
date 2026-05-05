@@ -7,6 +7,7 @@ import {
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval, PivotSource, PriceAlert, SymbolSearchResult } from "../types";
+import { toChartTime } from "../windows/shared";
 
 type PivotType = 'camarilla' | 'standard' | 'none';
 
@@ -695,17 +696,6 @@ function getPivotDrawFrom(interval: Interval, candles: CandleData[]): number | n
   return null;
 }
 
-function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
-  // For day/week/month, use date string to sidestep timezone offsets
-  if (interval === "day" || interval === "week" || interval === "month") {
-    const d = new Date(ts * 1000);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(d.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-  return ts as UTCTimestamp;
-}
 
 function parseDateString(dateStr: string): number {
   const parts = dateStr.split("-");
@@ -721,8 +711,8 @@ function parseDateString(dateStr: string): number {
 
 function convertTimestampToDateString(ts: number): string {
   const d = new Date(ts * 1000);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }

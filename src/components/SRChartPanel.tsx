@@ -3,10 +3,10 @@ import {
   CandlestickSeries,
   createChart,
   LineSeries,
-  UTCTimestamp,
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
+import { toChartTime } from "../windows/shared";
 
 type TrendlineAnchor = {
   time: number;
@@ -650,17 +650,6 @@ export default function SRChartPanel({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
-  // For day/week/month, use date string to sidestep timezone offsets in display
-  if (interval === "day" || interval === "week" || interval === "month") {
-    const d = new Date(ts * 1000);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(d.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-  return ts as UTCTimestamp;
-}
 
 function formatAge(isoString: string): string {
   try {
