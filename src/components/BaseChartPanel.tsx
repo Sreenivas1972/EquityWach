@@ -580,19 +580,20 @@ function getPivotDrawFrom(interval: Interval, candles: CandleData[]): number | n
 
   const lastTs = candles[candles.length - 1].time;
   const lastDate = new Date(lastTs * 1000);
-  const year = lastDate.getFullYear();
+  const year = lastDate.getUTCFullYear();
 
   if (interval === "day") {
-    return new Date(year, lastDate.getMonth(), 1, 0, 0, 0).getTime() / 1000;
+    return Date.UTC(year, lastDate.getUTCMonth(), 1, 0, 0, 0) / 1000;
   }
 
   if (interval === "week") {
-    const quarterStartMonth = Math.floor(lastDate.getMonth() / 3) * 3;
-    return new Date(year, quarterStartMonth, 1, 0, 0, 0).getTime() / 1000;
+    const quarterStartMonth = Math.floor(lastDate.getUTCMonth() / 3) * 3;
+    return Date.UTC(year, quarterStartMonth, 1, 0, 0, 0) / 1000;
   }
 
   return null;
 }
+
 
 function parseDateString(dateStr: string): number {
   const parts = dateStr.split("-");
