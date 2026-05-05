@@ -259,9 +259,11 @@ async fn check_price_alerts() -> Result<(), String> {
     let alerts = storage::load_price_alerts(&conn).map_err(|e| e.to_string())?;
 
     if alerts.is_empty() {
+        println!("No alerts found.");
         return Ok(());
     }
 
+    println!("Going to check price alerts.");
     let mut symbol_map: std::collections::HashMap<String, Vec<PriceAlert>> = std::collections::HashMap::new();
     for alert in alerts {
         symbol_map.entry(alert.symbol.clone()).or_default().push(alert);
@@ -294,6 +296,7 @@ async fn check_price_alerts() -> Result<(), String> {
     }
 
     if triggered_symbols.is_empty() {
+        println!("No price alerts triggered.");
         storage::remove_watchlist(watchlist_name).ok();
     } else {
         println!("Added {} symbols to price alerts watchlist", triggered_symbols.len());

@@ -8,6 +8,8 @@ import {
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval, PivotSource, PriceAlert, SymbolSearchResult } from "../types";
 
+type PivotType = 'camarilla' | 'standard' | 'none';
+
 type CamarillaLevelMeta = {
   key: string;
   label: string;
@@ -27,6 +29,27 @@ const CAMARILLA_LEVELS: CamarillaLevelMeta[] = [
   { key: "L3", label: "L3", color: "#12b886", compute: (high, low, close) => close - ((high - low) * 1.1) / 4 },
   { key: "L4", label: "L4", color: "#0ca678", compute: (high, low, close) => close - ((high - low) * 1.1) / 2 },
   { key: "L5", label: "L5", color: "#087f5b", compute: (high, low, close) => 2 * close - (high / low) * close },
+];
+
+type StandardLevelMeta = {
+  key: string;
+  label: string;
+  color: string;
+  compute: (high: number, low: number, close: number) => number;
+};
+
+const STANDARD_LEVELS: StandardLevelMeta[] = [
+  { key: "R5", label: "R5", color: "#a61e4d", compute: (high, low, close) => (high + low + close) / 3 + 4 * (high - low) },
+  { key: "R4", label: "R4", color: "#c2255c", compute: (high, low, close) => (high + low + close) / 3 + 3 * (high - low) },
+  { key: "R3", label: "R3", color: "#d9480f", compute: (high, low, close) => (high + low + close) / 3 + 2 * (high - low) },
+  { key: "R2", label: "R2", color: "#f08c00", compute: (high, low, close) => (high + low + close) / 3 + (high - low) },
+  { key: "R1", label: "R1", color: "#fab005", compute: (high, low, close) => 2 * ((high + low + close) / 3) - low },
+  { key: "PP", label: "PP", color: "#228be6", compute: (high, low, close) => (high + low + close) / 3 },
+  { key: "S1", label: "S1", color: "#82c91e", compute: (high, low, close) => 2 * ((high + low + close) / 3) - high },
+  { key: "S2", label: "S2", color: "#40c057", compute: (high, low, close) => (high + low + close) / 3 - (high - low) },
+  { key: "S3", label: "S3", color: "#12b886", compute: (high, low, close) => (high + low + close) / 3 - 2 * (high - low) },
+  { key: "S4", label: "S4", color: "#0ca678", compute: (high, low, close) => (high + low + close) / 3 - 3 * (high - low) },
+  { key: "S5", label: "S5", color: "#087f5b", compute: (high, low, close) => (high + low + close) / 3 - 4 * (high - low) },
 ];
 
 interface Props {
@@ -110,12 +133,14 @@ function BaseChartPanelComponent({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const pivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const standardPivotSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
   const pivotSourceRef = useRef<PivotSource | null>(null);
   const crosshairPriceRef = useRef<number | null>(null);
   const alertSeriesRef = useRef<Record<string, any>>({});
 
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [chartHeight, setChartHeight] = useState(0);
+  const [pivotType, setPivotType] = useState<PivotType>('camarilla');
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -168,15 +193,31 @@ function BaseChartPanelComponent({
         crosshairMarkerVisible: false,
         title: level.label,
         autoscaleInfoProvider: () => ({
-          priceRange: null, // This series will now be ignored for autoscaling
+          priceRange: null,
         }),
+      });
+    });
 
+    const standardPivotLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
+    STANDARD_LEVELS.forEach((level) => {
+      standardPivotLines[level.key] = chart.addSeries(LineSeries, {
+        color: level.color,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        title: level.label,
+        autoscaleInfoProvider: () => ({
+          priceRange: null,
+        }),
       });
     });
 
     chartRef.current = chart;
     seriesRef.current = series;
     pivotSeriesRef.current = pivotLines;
+    standardPivotSeriesRef.current = standardPivotLines;
 
     const observer = new ResizeObserver(() => {
       if (!containerRef.current) return;
@@ -193,6 +234,7 @@ function BaseChartPanelComponent({
       chartRef.current = null;
       seriesRef.current = null;
       pivotSeriesRef.current = {};
+      standardPivotSeriesRef.current = {};
     };
   }, []);
 
@@ -284,6 +326,9 @@ function BaseChartPanelComponent({
       CAMARILLA_LEVELS.forEach((level) => {
         pivotSeriesRef.current[level.key]?.setData([]);
       });
+      STANDARD_LEVELS.forEach((level) => {
+        standardPivotSeriesRef.current[level.key]?.setData([]);
+      });
       return;
     }
 
@@ -294,43 +339,91 @@ function BaseChartPanelComponent({
       const close = pivotSrc.close;
       const drawFromTs = getPivotDrawFrom(interval, candles) ?? pivotSrc.draw_from;
 
-      CAMARILLA_LEVELS.forEach((level) => {
-        const value = low > 0 ? level.compute(high, low, close) : NaN;
-        const line = pivotSeriesRef.current[level.key];
-        if (!line || !Number.isFinite(value)) {
-          line?.setData([]);
-          return;
-        }
-
-        const lineData = formatted
-          .filter((point) => {
-            const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
-            return pointTs >= drawFromTs;
-          })
-          .map((point) => ({
-            time: point.time,
-            value,
-          }));
-
-        // Add anchor point at draw_from to prevent line extension to the left
-        if (lineData.length > 0) {
-          const firstPointTime = lineData[0].time;
-          if (typeof firstPointTime === "string" ? parseDateString(firstPointTime) > drawFromTs : firstPointTime > drawFromTs) {
-            // Insert anchor point at draw_from
-            lineData.unshift({
-              time: typeof firstPointTime === "string" ? convertTimestampToDateString(drawFromTs) : (drawFromTs as UTCTimestamp),
-              value,
-            });
+      if (pivotType === 'camarilla') {
+        STANDARD_LEVELS.forEach((level) => {
+          standardPivotSeriesRef.current[level.key]?.setData([]);
+        });
+        
+        CAMARILLA_LEVELS.forEach((level) => {
+          const value = low > 0 ? level.compute(high, low, close) : NaN;
+          const line = pivotSeriesRef.current[level.key];
+          if (!line || !Number.isFinite(value)) {
+            line?.setData([]);
+            return;
           }
-        }
-        line.setData(lineData as Parameters<typeof line.setData>[0]);
-      });
+
+          const lineData = formatted
+            .filter((point) => {
+              const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
+              return pointTs >= drawFromTs;
+            })
+            .map((point) => ({
+              time: point.time,
+              value,
+            }));
+
+          if (lineData.length > 0) {
+            const firstPointTime = lineData[0].time;
+            if (typeof firstPointTime === "string" ? parseDateString(firstPointTime) > drawFromTs : firstPointTime > drawFromTs) {
+              lineData.unshift({
+                time: typeof firstPointTime === "string" ? convertTimestampToDateString(drawFromTs) : (drawFromTs as UTCTimestamp),
+                value,
+              });
+            }
+          }
+          line.setData(lineData as Parameters<typeof line.setData>[0]);
+        });
+      } else if (pivotType === 'standard') {
+        CAMARILLA_LEVELS.forEach((level) => {
+          pivotSeriesRef.current[level.key]?.setData([]);
+        });
+        
+        STANDARD_LEVELS.forEach((level) => {
+          const value = low > 0 ? level.compute(high, low, close) : NaN;
+          const line = standardPivotSeriesRef.current[level.key];
+          if (!line || !Number.isFinite(value)) {
+            line?.setData([]);
+            return;
+          }
+
+          const lineData = formatted
+            .filter((point) => {
+              const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
+              return pointTs >= drawFromTs;
+            })
+            .map((point) => ({
+              time: point.time,
+              value,
+            }));
+
+          if (lineData.length > 0) {
+            const firstPointTime = lineData[0].time;
+            if (typeof firstPointTime === "string" ? parseDateString(firstPointTime) > drawFromTs : firstPointTime > drawFromTs) {
+              lineData.unshift({
+                time: typeof firstPointTime === "string" ? convertTimestampToDateString(drawFromTs) : (drawFromTs as UTCTimestamp),
+                value,
+              });
+            }
+          }
+          line.setData(lineData as Parameters<typeof line.setData>[0]);
+        });
+      } else {
+        CAMARILLA_LEVELS.forEach((level) => {
+          pivotSeriesRef.current[level.key]?.setData([]);
+        });
+        STANDARD_LEVELS.forEach((level) => {
+          standardPivotSeriesRef.current[level.key]?.setData([]);
+        });
+      }
     } else {
       CAMARILLA_LEVELS.forEach((level) => {
         pivotSeriesRef.current[level.key]?.setData([]);
       });
+      STANDARD_LEVELS.forEach((level) => {
+        standardPivotSeriesRef.current[level.key]?.setData([]);
+      });
     }
-  }, [candles, interval, pivotSourceRef.current]);
+  }, [candles, interval, pivotType]);
 
   // ── Fetch pivot source data ───────────────────────────────────────────────
   useEffect(() => {
@@ -405,6 +498,15 @@ function BaseChartPanelComponent({
       <div className="chart-header">
         <span className="chart-symbol">{symbol ?? "Select a symbol"}</span>
         <span className="chart-interval-badge">{interval.toUpperCase()}</span>
+        <select
+          className="chart-pivot-select"
+          value={pivotType}
+          onChange={(e) => setPivotType(e.target.value as PivotType)}
+        >
+          <option value="camarilla">Camarilla</option>
+          <option value="standard">Standard</option>
+          <option value="none">No Pivots</option>
+        </select>
         {fl && (
           <span className="chart-freshness" style={{ color: fl.color }}>
             ● {fl.text}

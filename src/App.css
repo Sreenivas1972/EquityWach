@@ -108,6 +108,22 @@ body {
   color: var(--text-secondary);
 }
 
+.chart-pivot-select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font);
+}
+
+.chart-pivot-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .chart-mode-badge {
   background: var(--bg-surface);
   border: 1px solid var(--border);
