@@ -191,7 +191,7 @@ export default function App() {
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : `${mode}-${Date.now()}`;
-      const title = `${mode.toUpperCase()} - ${symbolValue}`;
+      const title = mode === "sr" ? "SR Chart" : mode === "fib" ? "Fib Chart" : "EMA Chart";
       const url = `/?mode=${mode}&symbol=${encodeURIComponent(symbolValue)}&interval=${interval}`;
 
       try {
