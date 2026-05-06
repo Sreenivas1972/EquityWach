@@ -1,5 +1,5 @@
 import type { UTCTimestamp } from "lightweight-charts";
-import type { CandleData, Interval } from "../types";
+import type { Interval } from "../types";
 
 export const SYMBOL_SYNC_EVENT = "equitywatcher:symbol-sync";
 

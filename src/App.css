@@ -134,6 +134,34 @@ body {
   font-weight: 600;
 }
 
+.link-interval-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.link-interval-btn:hover {
+  background: var(--bg-hover);
+}
+
+.link-interval-btn.unlinked {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.link-interval-btn.unlinked:hover {
+  background: #fecaca;
+}
+
+.chart-header.interval-unlinked {
+  background: #fee2e2;
+  border-bottom-color: #fca5a5;
+}
+
 .chart-search-container {
   position: relative;
   flex: 1;

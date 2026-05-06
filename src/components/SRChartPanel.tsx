@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   CandlestickSeries,
   createChart,
@@ -6,7 +7,8 @@ import {
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
-import { toChartTime } from "../windows/shared";
+import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
+import IntervalSelector from "./IntervalSelector";
 
 type TrendlineAnchor = {
   time: number;
@@ -57,14 +59,80 @@ interface Props {
 }
 
 export default function SRChartPanel({
-  symbol,
-  interval,
-  candles,
+  symbol: initialSymbol,
+  interval: initialInterval,
+  candles: initialCandles,
   isLoading,
   freshness,
   lastSync,
   warning,
 }: Props) {
+  const [symbol, setSymbol] = useState<string | null>(initialSymbol);
+  const [interval, setInterval] = useState<Interval>(initialInterval);
+  const [candles, setCandles] = useState<CandleData[]>(initialCandles);
+  const [linkInterval, setLinkInterval] = useState(true);
+
+  // Sync candles from parent when interval is linked
+  useEffect(() => {
+    if (linkInterval) {
+      setCandles(initialCandles);
+    }
+  }, [initialCandles, linkInterval]);
+
+  // Listen for symbol sync events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    async function setupListener() {
+      unlisten = await listen<SymbolSyncPayload>(SYMBOL_SYNC_EVENT, (event) => {
+        const { symbol: newSymbol, interval: newInterval } = event.payload;
+        
+        if (newSymbol !== symbol) {
+          setSymbol(newSymbol);
+        }
+        
+        if (linkInterval && newInterval !== interval) {
+          setInterval(newInterval);
+        }
+      });
+    }
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [symbol, interval, linkInterval]);
+
+  // Load candles when interval is not linked
+  useEffect(() => {
+    if (linkInterval || !symbol) {
+      return;
+    }
+
+    const currentSymbol = symbol;
+    let cancelled = false;
+    async function loadCandles() {
+      try {
+        const resp = await api.getChartData(currentSymbol, interval);
+        if (!cancelled) {
+          setCandles(resp.candles);
+        }
+      } catch {
+        if (!cancelled) {
+          setCandles([]);
+        }
+      }
+    }
+
+    loadCandles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, interval, linkInterval]);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<ReturnType<
@@ -517,9 +585,17 @@ export default function SRChartPanel({
   return (
     <div className="chart-panel">
       {/* Header bar */}
-      <div className="chart-header">
+      <div className={`chart-header${!linkInterval ? ' interval-unlinked' : ''}`} style={!linkInterval ? { background: '#fee2e2', borderBottomColor: '#fca5a5' } : {}}>
         <span className="chart-symbol">{symbol ?? "Select a symbol"}</span>
-        <span className="chart-interval-badge">{interval.toUpperCase()}</span>
+        <IntervalSelector value={interval} onChange={setInterval} />
+        <button
+          type="button"
+          className={`link-interval-btn${!linkInterval ? ' unlinked' : ''}`}
+          onClick={() => setLinkInterval(!linkInterval)}
+          title={linkInterval ? "Unlink interval from main chart" : "Link interval to main chart"}
+        >
+          {linkInterval ? "🔗" : "🔓"}
+        </button>
         <span className="chart-mode-badge">SR Levels</span>
         {fl && (
           <span className="chart-freshness" style={{ color: fl.color }}>
