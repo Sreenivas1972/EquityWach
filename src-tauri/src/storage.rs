@@ -4,7 +4,7 @@ use chrono::{Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, Result as SqlResult};
 
 use crate::models::{
-    CandleData, FetchSettings, InstrumentInfo, KiteConfig, LastSelection, RetentionSettings,
+    CandleData, FetchSettings, InstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
     WatchlistEntry,
 };
 
@@ -32,8 +32,8 @@ fn watchlists_path() -> PathBuf {
 fn selection_path() -> PathBuf {
     get_app_data_dir().join("last_selection.json")
 }
-fn kite_config_path() -> PathBuf {
-    get_app_data_dir().join("kite_config.json")
+fn upstox_config_path() -> PathBuf {
+    get_app_data_dir().join("upstox_config.json")
 }
 fn fetch_settings_path() -> PathBuf {
     get_app_data_dir().join("fetch_settings.json")
@@ -67,10 +67,13 @@ pub fn open_db() -> SqlResult<Connection> {
             tradingsymbol    TEXT    NOT NULL,
             exchange         TEXT    NOT NULL,
             name             TEXT    NOT NULL,
+            instrument_key   TEXT,
             PRIMARY KEY (instrument_token)
         );
         CREATE INDEX IF NOT EXISTS idx_instruments_sym
             ON instruments(tradingsymbol, exchange);
+        CREATE INDEX IF NOT EXISTS idx_instruments_key
+            ON instruments(instrument_key);
         CREATE INDEX IF NOT EXISTS idx_candles_lookup
             ON candles(symbol, interval, timestamp);
         
@@ -178,6 +181,15 @@ pub fn open_db() -> SqlResult<Connection> {
         conn.execute("ALTER TABLE fib_drawings ADD COLUMN last_accessed INTEGER", [])?;
         // Backfill with updated_at so existing drawings are not immediately pruned
         conn.execute("UPDATE fib_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
+    }
+
+    // Migration: Add instrument_key to instruments
+    let has_instrument_key = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('instruments') WHERE name='instrument_key'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+
+    if !has_instrument_key {
+        conn.execute("ALTER TABLE instruments ADD COLUMN instrument_key TEXT", [])?;
     }
 
     Ok(conn)
@@ -384,9 +396,9 @@ pub fn save_instruments(instruments: &[InstrumentInfo], conn: &Connection) -> Sq
     for inst in instruments {
         conn.execute(
             "INSERT OR REPLACE INTO instruments
-             (instrument_token, tradingsymbol, exchange, name)
-             VALUES (?1,?2,?3,?4)",
-            params![inst.instrument_token, inst.tradingsymbol, inst.exchange, inst.name],
+             (instrument_token, tradingsymbol, exchange, name, instrument_key)
+             VALUES (?1,?2,?3,?4,?5)",
+            params![inst.instrument_token, inst.tradingsymbol, inst.exchange, inst.name, inst.instrument_key],
         )?;
     }
     Ok(())
@@ -404,6 +416,23 @@ pub fn lookup_instrument_token(
         |row| row.get(0),
     ) {
         Ok(token) => Ok(Some(token)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn lookup_instrument_key(
+    tradingsymbol: &str,
+    exchange: &str,
+    conn: &Connection,
+) -> SqlResult<Option<String>> {
+    match conn.query_row(
+        "SELECT instrument_key FROM instruments
+         WHERE tradingsymbol = ?1 AND exchange = ?2",
+        params![tradingsymbol, exchange],
+        |row| row.get(0),
+    ) {
+        Ok(key) => Ok(Some(key)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
@@ -857,27 +886,42 @@ pub fn save_last_selection(sel: &LastSelection) -> Result<(), String> {
     write_json(&selection_path(), sel)
 }
 
-// ─── Kite config ─────────────────────────────────────────────────────────────
+// ─── Upstox config ─────────────────────────────────────────────────────────────
 
-pub fn load_kite_config() -> Option<KiteConfig> {
-    read_json(&kite_config_path())
+pub fn load_upstox_config() -> Option<UpstoxConfig> {
+    read_json(&upstox_config_path())
 }
 
-pub fn save_kite_config(config: &KiteConfig) -> Result<(), String> {
-    write_json(&kite_config_path(), config)
+pub fn save_upstox_config(config: &UpstoxConfig) -> Result<(), String> {
+    write_json(&upstox_config_path(), config)
 }
 
-/// Update only the access_token field, preserving api_key/api_secret.
+/// Update only the access_token field, preserving api_key/api_secret/analytics_token.
 pub fn save_access_token(token: &str) -> Result<(), String> {
-    let mut config = load_kite_config().ok_or("Kite credentials not configured")?;
+    let mut config = load_upstox_config().ok_or("Upstox credentials not configured")?;
     config.access_token = Some(token.to_string());
-    save_kite_config(&config)
+    save_upstox_config(&config)
 }
 
 pub fn clear_access_token() -> Result<(), String> {
-    if let Some(mut config) = load_kite_config() {
+    if let Some(mut config) = load_upstox_config() {
         config.access_token = None;
-        save_kite_config(&config)
+        save_upstox_config(&config)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn save_analytics_token(token: &str) -> Result<(), String> {
+    let mut config = load_upstox_config().ok_or("Upstox credentials not configured")?;
+    config.analytics_token = Some(token.to_string());
+    save_upstox_config(&config)
+}
+
+pub fn clear_analytics_token() -> Result<(), String> {
+    if let Some(mut config) = load_upstox_config() {
+        config.analytics_token = None;
+        save_upstox_config(&config)
     } else {
         Ok(())
     }

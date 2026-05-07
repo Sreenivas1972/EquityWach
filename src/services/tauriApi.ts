@@ -8,7 +8,7 @@ import type {
   PivotSource,
   PriceAlert,
   RetentionSettings,
-  SavedKiteCredentials,
+  SavedUpstoxCredentials,
   SymbolSearchResult,
   WatchlistEntry,
   WatchlistSymbol,
@@ -83,18 +83,23 @@ export const api = {
   updateFetchSettings: (settings: FetchSettings) =>
     invoke<void>("update_fetch_settings", { settings }),
 
-  // ── Kite auth ─────────────────────────────────────────────────────────────
+  // ── Upstox auth ─────────────────────────────────────────────────────────────
   getAuthStatus: () => invoke<AuthStatus>("get_auth_status"),
 
-  getSavedKiteCredentials: () =>
-    invoke<SavedKiteCredentials | null>("get_saved_kite_credentials"),
+  getSavedUpstoxCredentials: () =>
+    invoke<SavedUpstoxCredentials | null>("get_saved_upstox_credentials"),
 
-  saveKiteCredentials: (apiKey: string, apiSecret: string) =>
-    invoke<void>("save_kite_credentials", { apiKey, apiSecret }),
+  saveUpstoxCredentials: (apiKey: string, apiSecret: string) =>
+    invoke<void>("save_upstox_credentials", { apiKey, apiSecret }),
 
-  kiteStartLogin: () => invoke<string>("kite_start_login"),
+  upstoxStartLogin: () => invoke<string>("upstox_start_login"),
 
-  kiteLogout: () => invoke<void>("kite_logout"),
+  upstoxLogout: () => invoke<void>("upstox_logout"),
+
+  saveAnalyticsToken: (token: string) =>
+    invoke<void>("save_analytics_token", { token }),
+
+  clearAnalyticsToken: () => invoke<void>("clear_analytics_token"),
 
   // ── Drawing Storage ───────────────────────────────────────────────────────
   loadSrDrawings: (symbol: string) => invoke<string[]>("load_sr_drawings", { symbol }),

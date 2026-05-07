@@ -89,23 +89,27 @@ pub struct ChartDataResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KiteConfig {
+pub struct UpstoxConfig {
     pub api_key: String,
     pub api_secret: String,
     pub access_token: Option<String>,
+    pub analytics_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthStatus {
     pub is_authenticated: bool,
     pub api_key: Option<String>,
+    pub has_oauth_token: bool,
+    pub has_analytics_token: bool,
     pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SavedKiteCredentials {
+pub struct SavedUpstoxCredentials {
     pub api_key: String,
     pub api_secret: String,
+    pub analytics_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +118,8 @@ pub struct InstrumentInfo {
     pub tradingsymbol: String,
     pub exchange: String,
     pub name: String,
+    #[serde(default)]
+    pub instrument_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -59,12 +59,15 @@ export interface SymbolSearchResult {
 export interface AuthStatus {
   is_authenticated: boolean;
   api_key: string | null;
+  has_oauth_token: boolean;
+  has_analytics_token: boolean;
   message: string;
 }
 
-export interface SavedKiteCredentials {
+export interface SavedUpstoxCredentials {
   api_key: string;
   api_secret: string;
+  analytics_token?: string;
 }
 
 export type Interval = "day" | "week" | "month";

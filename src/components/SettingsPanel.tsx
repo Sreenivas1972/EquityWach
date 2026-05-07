@@ -17,7 +17,9 @@ export default function SettingsPanel({ onClose }: Props) {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [analyticsToken, setAnalyticsToken] = useState("");
   const [loginMsg, setLoginMsg] = useState("");
+  const [analyticsMsg, setAnalyticsMsg] = useState("");
   const [loginPending, setLoginPending] = useState(false);
   const [credsSaved, setCredsSaved] = useState(false);
 
@@ -52,12 +54,15 @@ export default function SettingsPanel({ onClose }: Props) {
   // ── Load initial data ─────────────────────────────────────────────────────
   useEffect(() => {
     api.getAuthStatus().then(setAuthStatus).catch(() => {});
-    api.getSavedKiteCredentials().then((saved) => {
+    api.getSavedUpstoxCredentials().then((saved) => {
       if (!saved) {
         return;
       }
       setApiKey(saved.api_key);
       setApiSecret(saved.api_secret);
+      if (saved.analytics_token) {
+        setAnalyticsToken(saved.analytics_token);
+      }
       setCredsSaved(true);
     }).catch(() => {});
     api.getRetentionSettings().then(setRetention).catch(() => {});
@@ -66,11 +71,11 @@ export default function SettingsPanel({ onClose }: Props) {
     api.getInstrumentsCount().then(setInstrCount).catch(() => {});
   }, []);
 
-  // ── Listen for Kite auth completion ──────────────────────────────────────
+  // ── Listen for Upstox auth completion ──────────────────────────────────────
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     listen<{ success: boolean; message: string }>(
-      "kite-auth-complete",
+      "upstox-auth-complete",
       (event) => {
         setLoginPending(false);
         if (event.payload.success) {
@@ -91,7 +96,7 @@ export default function SettingsPanel({ onClose }: Props) {
   // ── Handlers: auth ────────────────────────────────────────────────────────
   async function handleSaveCredentials() {
     try {
-      await api.saveKiteCredentials(apiKey.trim(), apiSecret.trim());
+      await api.saveUpstoxCredentials(apiKey.trim(), apiSecret.trim());
       setCredsSaved(true);
       setLoginMsg("Credentials saved.");
       const s = await api.getAuthStatus();
@@ -106,13 +111,13 @@ export default function SettingsPanel({ onClose }: Props) {
     setLoginPending(true);
     try {
       if (hasTypedCredentials) {
-        await api.saveKiteCredentials(apiKey.trim(), apiSecret.trim());
+        await api.saveUpstoxCredentials(apiKey.trim(), apiSecret.trim());
         setCredsSaved(true);
         const status = await api.getAuthStatus();
         setAuthStatus(status);
       }
 
-      const msg = await api.kiteStartLogin();
+      const msg = await api.upstoxStartLogin();
       setLoginMsg(msg);
     } catch (e) {
       setLoginPending(false);
@@ -122,12 +127,36 @@ export default function SettingsPanel({ onClose }: Props) {
 
   async function handleLogout() {
     try {
-      await api.kiteLogout();
+      await api.upstoxLogout();
       setLoginMsg("Logged out.");
       const s = await api.getAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setLoginMsg(`Error: ${e}`);
+    }
+  }
+
+  async function handleSaveAnalyticsToken() {
+    setAnalyticsMsg("");
+    try {
+      await api.saveAnalyticsToken(analyticsToken.trim());
+      setAnalyticsMsg("Analytics token saved.");
+      const s = await api.getAuthStatus();
+      setAuthStatus(s);
+    } catch (e) {
+      setAnalyticsMsg(`Error: ${e}`);
+    }
+  }
+
+  async function handleClearAnalyticsToken() {
+    try {
+      await api.clearAnalyticsToken();
+      setAnalyticsToken("");
+      setAnalyticsMsg("Analytics token cleared.");
+      const s = await api.getAuthStatus();
+      setAuthStatus(s);
+    } catch (e) {
+      setAnalyticsMsg(`Error: ${e}`);
     }
   }
 
@@ -226,9 +255,9 @@ export default function SettingsPanel({ onClose }: Props) {
       </div>
 
       <div className="settings-body">
-        {/* ── Kite Authentication ─────────────────────────────────────── */}
+        {/* ── Upstox Authentication ─────────────────────────────────────── */}
         <section className="settings-section">
-          <h3>Kite Authentication</h3>
+          <h3>Upstox Authentication</h3>
 
           {authStatus && (
             <div
@@ -262,16 +291,22 @@ export default function SettingsPanel({ onClose }: Props) {
               disabled={!apiKey || !apiSecret}>
               Save Credentials
             </button>
+          </div>
+
+          <hr style={{ margin: "1rem 0", border: "none", borderTop: "1px solid #333" }} />
+          
+          <h4 style={{ marginBottom: "0.5rem" }}>Option 1: OAuth Login (Full Access)</h4>
+          <div className="form-actions">
             <button
               className="btn-primary"
               onClick={handleLogin}
               disabled={loginPending || !canStartLogin}
             >
-              {loginPending ? "Waiting for browser…" : "Login with Kite"}
+              {loginPending ? "Waiting for browser…" : "Login with Upstox"}
             </button>
-            {authStatus?.is_authenticated && (
+            {authStatus?.has_oauth_token && (
               <button className="btn-danger" onClick={handleLogout}>
-                Logout
+                Logout OAuth
               </button>
             )}
           </div>
@@ -280,14 +315,53 @@ export default function SettingsPanel({ onClose }: Props) {
             Register <code>http://127.0.0.1:6010/login</code> as the redirect URL in
             your{" "}
             <a
-              href="https://developers.kite.trade/apps"
+              href="https://developer.upstox.com/"
               target="_blank"
               rel="noreferrer"
             >
-              Kite developer console
+              Upstox developer console
             </a>
             .
           </p>
+
+          <hr style={{ margin: "1rem 0", border: "none", borderTop: "1px solid #333" }} />
+
+          <h4 style={{ marginBottom: "0.5rem" }}>Option 2: Analytics Token (Read-Only)</h4>
+          <p className="settings-hint">
+            Generate a long-lived (1 year) read-only token from the{" "}
+            <a
+              href="https://account.upstox.com/developer/apps#analytics"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Analytics tab
+            </a>{" "}
+            in your Upstox Developer Apps page. Supports historical data and market quotes.
+          </p>
+          <div className="form-row">
+            <label>Analytics Token</label>
+            <input
+              type="password"
+              value={analyticsToken}
+              placeholder="Enter analytics token (optional)"
+              onChange={(e) => setAnalyticsToken(e.target.value)}
+            />
+          </div>
+          <div className="form-actions">
+            <button
+              className="btn-primary"
+              onClick={handleSaveAnalyticsToken}
+              disabled={!analyticsToken.trim()}
+            >
+              Save Analytics Token
+            </button>
+            {authStatus?.has_analytics_token && (
+              <button className="btn-danger" onClick={handleClearAnalyticsToken}>
+                Clear Token
+              </button>
+            )}
+          </div>
+          {analyticsMsg && <p className="settings-msg">{analyticsMsg}</p>}
         </section>
 
         {/* ── Data Retention ──────────────────────────────────────────── */}
@@ -500,7 +574,7 @@ export default function SettingsPanel({ onClose }: Props) {
         <section className="settings-section">
           <h3>NSE Instruments Cache</h3>
           <p className="settings-hint">
-            Symbols are resolved to Kite instrument tokens via a locally cached
+            Symbols are resolved to Upstox instrument keys via a locally cached
             copy of the NSE instruments list. Refresh after adding new symbols.
           </p>
           {instrCount !== null && (

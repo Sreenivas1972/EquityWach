@@ -5,20 +5,17 @@ use rusqlite::params;
 use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, PivotSource};
 use crate::storage;
 
-const KITE_API_BASE: &str = "https://api.kite.trade";
+const UPSTOX_V2_BASE: &str = "https://api.upstox.com/v2";
+const UPSTOX_V3_BASE: &str = "https://api.upstox.com/v3";
 
-// ─── Public entry points ──────────────────────────────────────────────────────
-
-/// Downloads the full NSE EQ instruments list and caches it locally.
-/// Returns the number of instruments saved.
 pub async fn refresh_instruments() -> Result<usize, String> {
-    let (api_key, access_token) = get_auth()?;
+    let access_token = get_access_token()?;
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("{}/instruments/NSE", KITE_API_BASE))
-        .header("X-Kite-Version", "3")
-        .header("Authorization", format!("token {}:{}", api_key, access_token))
+        .get(format!("{}/instruments", UPSTOX_V2_BASE))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Accept", "text/csv")
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
@@ -28,32 +25,46 @@ pub async fn refresh_instruments() -> Result<usize, String> {
         return Err(format!("Instruments fetch failed: {}", text));
     }
 
-    let csv_text = resp.text().await.map_err(|e| e.to_string())?;
+    let gzip_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let csv_text = decompress_gzip(&gzip_bytes)?;
 
-    // Parse only NSE EQ instruments
-    // Columns: instrument_token,exchange_token,tradingsymbol,name,last_price,
-    //          expiry,strike,tick_size,lot_size,instrument_type,segment,exchange
     let mut instruments: Vec<InstrumentInfo> = Vec::new();
     let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
     for result in reader.records() {
         let rec = result.map_err(|e| e.to_string())?;
-        if rec.len() < 12 {
+        if rec.len() < 15 {
             continue;
         }
-        let instrument_type = &rec[9];
-        let exchange = &rec[11];
-        if instrument_type != "EQ" || exchange != "NSE" {
+        let trading_symbol = &rec[0];
+        let exchange = &rec[3];
+        let instrument_type = &rec[5];
+        let segment = &rec[7];
+        
+        if instrument_type != "EQ" || segment != "NSE_EQ" || exchange != "NSE" {
             continue;
         }
-        let token: u32 = rec[0].parse().unwrap_or(0);
-        if token == 0 {
+        
+        let instrument_key = &rec[14];
+        if instrument_key.is_empty() {
             continue;
         }
+        
+        let instrument_token: u32 = extract_token_from_key(instrument_key)
+            .or_else(|| extract_token_from_key(&rec[0]))
+            .unwrap_or_else(|| {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                instrument_key.hash(&mut hasher);
+                hasher.finish() as u32
+            });
+        
         instruments.push(InstrumentInfo {
-            instrument_token: token,
-            tradingsymbol: rec[2].to_string(),
+            instrument_token,
+            tradingsymbol: trading_symbol.to_string(),
             exchange: exchange.to_string(),
-            name: rec[3].to_string(),
+            name: rec[2].to_string(),
+            instrument_key: Some(instrument_key.to_string()),
         });
     }
 
@@ -68,20 +79,36 @@ pub async fn refresh_instruments() -> Result<usize, String> {
     Ok(count)
 }
 
-/// Open chart for `symbol` (e.g. "INFY" or "NSE:INFY") at `interval`.
-/// Loads cached data first, then fetches only the missing tail from Kite.
+fn extract_token_from_key(key: &str) -> Option<u32> {
+    let parts: Vec<&str> = key.split('|').collect();
+    if parts.len() >= 2 {
+        parts[1].parse().ok()
+    } else {
+        None
+    }
+}
+
+fn decompress_gzip(bytes: &[u8]) -> Result<String, String> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    
+    let mut decoder = GzDecoder::new(bytes);
+    let mut decompressed = String::new();
+    decoder.read_to_string(&mut decompressed).map_err(|e| format!("Gzip decompression error: {}", e))?;
+    Ok(decompressed)
+}
+
 pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataResponse, String> {
     let symbol = symbol.to_string();
     let interval = interval.to_string();
 
-    // ── Step 1: read everything from the local DB (blocking) ──────────────────
     let (tradingsymbol, exchange) = parse_symbol(&symbol);
     let sym_clone = tradingsymbol.clone();
     let exc_clone = exchange.clone();
     let int_clone = interval.clone();
 
-    let (cached, latest_ts, last_sync, instrument_token) =
-        tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<u32>), String> {
+    let (cached, latest_ts, last_sync, instrument_key) =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<String>), String> {
             let conn = storage::open_db().map_err(|e| e.to_string())?;
             let cached = storage::get_cached_candles(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
@@ -89,18 +116,17 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
                 .map_err(|e| e.to_string())?;
             let last_sync = storage::get_last_synced(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
-            let instrument_token =
-                storage::lookup_instrument_token(&sym_clone, &exc_clone, &conn)
+            let instrument_key =
+                storage::lookup_instrument_key(&sym_clone, &exc_clone, &conn)
                     .map_err(|e| e.to_string())?;
-            Ok((cached, latest_ts, last_sync, instrument_token))
+            Ok((cached, latest_ts, last_sync, instrument_key))
         })
         .await
         .map_err(|e| e.to_string())??;
 
     let last_sync_str = last_sync.map(storage::ts_to_rfc3339);
 
-    // ── Step 2: check auth and instrument token ───────────────────────────────
-    let auth = get_auth();
+    let auth = get_access_token();
     if auth.is_err() {
         return serve_cached_or_error(
             cached,
@@ -108,10 +134,10 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
             "Not authenticated. Showing cached data.",
         );
     }
-    let (api_key, access_token) = auth.unwrap();
+    let access_token = auth.unwrap();
 
-    let instrument_token = match instrument_token {
-        Some(t) => t,
+    let instrument_key = match instrument_key {
+        Some(k) => k,
         None => {
             return serve_cached_or_error(
                 cached,
@@ -124,7 +150,6 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
         }
     };
 
-    // ── Step 3: fetch missing tail from Kite (async) ──────────────────────────
     let fetch_settings = tokio::task::spawn_blocking(storage::load_fetch_settings)
         .await
         .map_err(|e| e.to_string())?;
@@ -132,23 +157,14 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
     let from = match latest_ts {
         Some(ts) => {
             let base = Utc.timestamp_opt(ts, 0).single().unwrap_or_else(Utc::now);
-            // Re-fetch one bucket back for aggregate intervals so we can recompute
-            // the latest week/month candle accurately.
             base - refresh_backfill_duration(&interval)
         }
         None => fetch_from(&interval, &fetch_settings),
     };
     let to = Utc::now();
 
-    let url = format!(
-        "{}/instruments/historical/{}/{}",
-        KITE_API_BASE,
-        instrument_token,
-        request_interval_for_kite(&interval)
-    );
-
-    let new_candles = match fetch_candles(&url, &api_key, &access_token, from, to).await {
-        Ok(c) => normalize_interval_candles(c, &interval),
+    let new_candles = match fetch_candles(&instrument_key, &access_token, from, to, &interval).await {
+        Ok(c) => c,
         Err(e) => {
             return serve_cached_or_error(
                 cached,
@@ -158,7 +174,6 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
         }
     };
 
-    // ── Step 4: persist and reload (blocking) ─────────────────────────────────
     let sym2 = tradingsymbol.clone();
     let int2 = interval.clone();
     let cached_was_empty = cached.is_empty();
@@ -202,23 +217,23 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
     let exc_clone = exchange.clone();
     let int_clone = interval.clone();
 
-    let (cached, _, last_sync, instrument_token) =
-        tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<u32>), String> {
+    let (cached, _, last_sync, instrument_key) =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<String>), String> {
             let conn = storage::open_db().map_err(|e| e.to_string())?;
             let cached = storage::get_cached_candles(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
             let last_sync = storage::get_last_synced(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
-            let instrument_token = storage::lookup_instrument_token(&sym_clone, &exc_clone, &conn)
+            let instrument_key = storage::lookup_instrument_key(&sym_clone, &exc_clone, &conn)
                 .map_err(|e| e.to_string())?;
-            Ok((cached, None, last_sync, instrument_token))
+            Ok((cached, None, last_sync, instrument_key))
         })
         .await
         .map_err(|e| e.to_string())??;
 
     let last_sync_str = last_sync.map(storage::ts_to_rfc3339);
 
-    let auth = get_auth();
+    let auth = get_access_token();
     if auth.is_err() {
         return serve_cached_or_error(
             cached,
@@ -226,10 +241,10 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
             "Not authenticated. Showing cached data.",
         );
     }
-    let (api_key, access_token) = auth.unwrap();
+    let access_token = auth.unwrap();
 
-    let instrument_token = match instrument_token {
-        Some(t) => t,
+    let instrument_key = match instrument_key {
+        Some(k) => k,
         None => {
             return serve_cached_or_error(
                 cached,
@@ -249,15 +264,8 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
     let from = fetch_from(&interval, &fetch_settings);
     let to = Utc::now();
 
-    let url = format!(
-        "{}/instruments/historical/{}/{}",
-        KITE_API_BASE,
-        instrument_token,
-        request_interval_for_kite(&interval)
-    );
-
-    let new_candles = match fetch_candles(&url, &api_key, &access_token, from, to).await {
-        Ok(c) => normalize_interval_candles(c, &interval),
+    let new_candles = match fetch_candles(&instrument_key, &access_token, from, to, &interval).await {
+        Ok(c) => c,
         Err(e) => {
             return serve_cached_or_error(
                 cached,
@@ -303,17 +311,17 @@ pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<Piv
     let exchange_clone = exchange.clone();
     let interval_clone = interval_str.clone();
 
-    let (cached_meta, instrument_token) = tokio::task::spawn_blocking(move || -> Result<(Option<storage::PivotMeta>, Option<u32>), String> {
+    let (cached_meta, instrument_key) = tokio::task::spawn_blocking(move || -> Result<(Option<storage::PivotMeta>, Option<String>), String> {
         let conn = storage::open_db().map_err(|e| e.to_string())?;
         let pivot_type = if interval_clone == "day" { "month" } else { "quarter" };
         let meta = storage::get_pivot_meta(&trading_sym_clone, pivot_type, &conn).map_err(|e| e.to_string())?;
-        let token = storage::lookup_instrument_token(&trading_sym_clone, &exchange_clone, &conn).map_err(|e| e.to_string())?;
-        Ok((meta, token))
+        let key = storage::lookup_instrument_key(&trading_sym_clone, &exchange_clone, &conn).map_err(|e| e.to_string())?;
+        Ok((meta, key))
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    let instrument_token = instrument_token.ok_or_else(|| {
+    let instrument_key = instrument_key.ok_or_else(|| {
         format!(
             "Symbol '{}' not in instruments cache. Please refresh instruments in Settings.",
             tradingsymbol
@@ -355,7 +363,7 @@ pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<Piv
 
     let prev_candles = load_or_fetch_day_candles(
         &tradingsymbol,
-        instrument_token,
+        instrument_key,
         prev_start,
         prev_end,
     )
@@ -460,7 +468,7 @@ fn previous_quarter_start(current_quarter_start: chrono::DateTime<Utc>) -> chron
 
 async fn load_or_fetch_day_candles(
     symbol: &str,
-    instrument_token: u32,
+    instrument_key: String,
     from: chrono::DateTime<Utc>,
     to: chrono::DateTime<Utc>,
 ) -> Result<Vec<CandleData>, String> {
@@ -480,13 +488,8 @@ async fn load_or_fetch_day_candles(
         return Ok(cached);
     }
 
-    let auth = get_auth()?;
-    let url = format!(
-        "{}/instruments/historical/{}/day",
-        KITE_API_BASE,
-        instrument_token,
-    );
-    let fetched = fetch_candles(&url, &auth.0, &auth.1, from, to).await?;
+    let access_token = get_access_token()?;
+    let fetched = fetch_candles(&instrument_key, &access_token, from, to, "day").await?;
     if fetched.is_empty() {
         return Ok(Vec::new());
     }
@@ -526,32 +529,31 @@ fn compute_high_low_close(candles: &[CandleData]) -> Option<(f64, f64, f64)> {
     }
 }
 
-// ─── HTTP helper ──────────────────────────────────────────────────────────────
-
 async fn fetch_candles(
-    url: &str,
-    api_key: &str,
+    instrument_key: &str,
     access_token: &str,
     from: chrono::DateTime<Utc>,
     to: chrono::DateTime<Utc>,
+    interval: &str,
 ) -> Result<Vec<CandleData>, String> {
-    let from_str = from.format("%Y-%m-%d %H:%M:%S").to_string();
-    let to_str = to.format("%Y-%m-%d %H:%M:%S").to_string();
+    let from_str = from.format("%Y-%m-%d").to_string();
+    let to_str = to.format("%Y-%m-%d").to_string();
+    let api_interval = interval_to_upstox(interval);
 
     let client = reqwest::Client::new();
+    let url = format!(
+        "{}/historical/candle/{}/{}/{}/{}",
+        UPSTOX_V3_BASE,
+        urlencoding::encode(instrument_key),
+        api_interval,
+        to_str,
+        from_str
+    );
+
     let resp = client
-        .get(url)
-        .header("X-Kite-Version", "3")
-        .header(
-            "Authorization",
-            format!("token {}:{}", api_key, access_token),
-        )
-        .query(&[
-            ("from", from_str.as_str()),
-            ("to", to_str.as_str()),
-            ("continuous", "0"),
-            ("oi", "0"),
-        ])
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Accept", "application/json")
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
@@ -559,64 +561,79 @@ async fn fetch_candles(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        if status == 403 {
+        if status == 403 || status == 401 {
             return Err("Authentication expired. Please login again.".to_string());
         }
-        return Err(format!("Kite API error {}: {}", status, text));
+        return Err(format!("Upstox API error {}: {}", status, text));
     }
 
     #[derive(Deserialize)]
-    struct KiteResp {
-        data: KiteData,
+    struct UpstoxResponse {
+        data: Option<UpstoxData>,
     }
     #[derive(Deserialize)]
-    struct KiteData {
-        candles: Vec<serde_json::Value>,
+    struct UpstoxData {
+        candles: Vec<Vec<serde_json::Value>>,
     }
 
-    let kite: KiteResp = resp
+    let upstox: UpstoxResponse = resp
         .json()
         .await
         .map_err(|e| format!("Parse error: {}", e))?;
 
-    // Each candle: [datetime_str, open, high, low, close, volume, oi?]
-    let candles = kite
-        .data
-        .candles
+    let candles = match upstox.data {
+        Some(data) => data.candles,
+        None => return Ok(Vec::new()),
+    };
+
+    let candles: Vec<CandleData> = candles
         .iter()
         .filter_map(|c| {
-            let arr = c.as_array()?;
-            if arr.len() < 6 {
+            if c.len() < 6 {
                 return None;
             }
-            let time_str = arr[0].as_str()?;
+            let time_str = c[0].as_str()?;
             let dt = chrono::DateTime::parse_from_rfc3339(time_str)
-                .or_else(|_| {
-                    chrono::DateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%z")
-                })
+                .or_else(|_| chrono::DateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%z"))
                 .ok()?;
             Some(CandleData {
                 time: dt.timestamp(),
-                open: arr[1].as_f64()?,
-                high: arr[2].as_f64()?,
-                low: arr[3].as_f64()?,
-                close: arr[4].as_f64()?,
-                volume: arr[5].as_u64().unwrap_or(0),
+                open: c[1].as_f64()?,
+                high: c[2].as_f64()?,
+                low: c[3].as_f64()?,
+                close: c[4].as_f64()?,
+                volume: c[5].as_u64().unwrap_or(0),
             })
         })
         .collect();
 
-    Ok(candles)
+    let mut result = match interval {
+        "week" => aggregate_candles(candles, "week"),
+        "month" => aggregate_candles(candles, "month"),
+        _ => candles,
+    };
+    
+    result.sort_by_key(|c| c.time);
+    Ok(result)
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+fn interval_to_upstox(interval: &str) -> &'static str {
+    match interval {
+        "week" => "day",
+        "month" => "day",
+        _ => "day",
+    }
+}
 
-fn get_auth() -> Result<(String, String), String> {
-    let config = storage::load_kite_config().ok_or("Kite not configured")?;
-    let token = config
-        .access_token
-        .ok_or("Not authenticated. Please login in Settings.")?;
-    Ok((config.api_key, token))
+fn get_access_token() -> Result<String, String> {
+    let config = storage::load_upstox_config().ok_or("Upstox not configured")?;
+    
+    // Prefer analytics_token for read-only operations (historical data)
+    // Fall back to OAuth access_token if analytics_token is not available
+    config
+        .analytics_token
+        .or(config.access_token)
+        .ok_or("Not authenticated. Please login or enter an Analytics Token in Settings.".to_string())
 }
 
 fn parse_symbol(s: &str) -> (String, String) {
@@ -625,11 +642,6 @@ fn parse_symbol(s: &str) -> (String, String) {
     } else {
         (s.to_uppercase(), "NSE".to_string())
     }
-}
-
-fn request_interval_for_kite(_interval: &str) -> &'static str {
-    // Kite historical API supports day candles for equities; week/month are derived locally.
-    "day"
 }
 
 fn fetch_from(interval: &str, s: &FetchSettings) -> chrono::DateTime<Utc> {
@@ -646,14 +658,6 @@ fn refresh_backfill_duration(interval: &str) -> Duration {
         "week" => Duration::days(7),
         "month" => Duration::days(31),
         _ => Duration::zero(),
-    }
-}
-
-fn normalize_interval_candles(candles: Vec<CandleData>, interval: &str) -> Vec<CandleData> {
-    match interval {
-        "week" => aggregate_candles(candles, "week"),
-        "month" => aggregate_candles(candles, "month"),
-        _ => candles,
     }
 }
 

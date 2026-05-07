@@ -1,5 +1,5 @@
-mod kite_api;
-mod kite_auth;
+mod upstox_api;
+mod upstox_auth;
 mod models;
 mod storage;
 mod watchlists;
@@ -90,21 +90,21 @@ fn set_last_selection(
 
 #[tauri::command]
 async fn get_chart_data(symbol: String, interval: String) -> Result<ChartDataResponse, String> {
-    kite_api::get_chart_data(&symbol, &interval).await
+    upstox_api::get_chart_data(&symbol, &interval).await
 }
 #[tauri::command]
 async fn refresh_chart_data(symbol: String, interval: String) -> Result<ChartDataResponse, String> {
-    kite_api::refresh_chart_data(&symbol, &interval).await
+    upstox_api::refresh_chart_data(&symbol, &interval).await
 }
 #[tauri::command]
 async fn get_pivot_source(symbol: String, interval: String) -> Result<Option<PivotSource>, String> {
-    kite_api::get_pivot_source(&symbol, &interval).await
+    upstox_api::get_pivot_source(&symbol, &interval).await
 }
 // ─── Instruments ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
 async fn refresh_instruments() -> Result<usize, String> {
-    kite_api::refresh_instruments().await
+    upstox_api::refresh_instruments().await
 }
 
 #[tauri::command]
@@ -139,26 +139,26 @@ fn update_fetch_settings(settings: FetchSettings) -> Result<(), String> {
     storage::save_fetch_settings(&settings)
 }
 
-// ─── Kite auth ────────────────────────────────────────────────────────────────
+// ─── Upstox auth ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
 fn get_auth_status() -> models::AuthStatus {
-    kite_auth::get_auth_status()
+    upstox_auth::get_auth_status()
 }
 
 #[tauri::command]
-fn save_kite_credentials(api_key: String, api_secret: String) -> Result<(), String> {
-    kite_auth::save_credentials(api_key, api_secret)
+fn save_upstox_credentials(api_key: String, api_secret: String) -> Result<(), String> {
+    upstox_auth::save_credentials(api_key, api_secret)
 }
 
 #[tauri::command]
-fn get_saved_kite_credentials() -> Option<models::SavedKiteCredentials> {
-    kite_auth::get_saved_credentials()
+fn get_saved_upstox_credentials() -> Option<models::SavedUpstoxCredentials> {
+    upstox_auth::get_saved_credentials()
 }
 
 #[tauri::command]
-async fn kite_start_login(app: tauri::AppHandle) -> Result<String, String> {
-    let login_url = kite_auth::get_login_url()?;
+async fn upstox_start_login(app: tauri::AppHandle) -> Result<String, String> {
+    let login_url = upstox_auth::get_login_url()?;
 
     // Open the login page in the system browser
     open::that(&login_url).map_err(|e| format!("Failed to open browser: {}", e))?;
@@ -167,8 +167,8 @@ async fn kite_start_login(app: tauri::AppHandle) -> Result<String, String> {
     let app_handle = app.clone();
     tokio::spawn(async move {
         let result = async {
-            let request_token = kite_auth::start_callback_server().await?;
-            kite_auth::exchange_request_token(&request_token).await
+            let code = upstox_auth::start_callback_server().await?;
+            upstox_auth::exchange_auth_code(&code).await
         }
         .await;
 
@@ -176,14 +176,24 @@ async fn kite_start_login(app: tauri::AppHandle) -> Result<String, String> {
             Ok(_) => serde_json::json!({ "success": true,  "message": "Authentication successful" }),
             Err(e) => serde_json::json!({ "success": false, "message": e }),
         };
-        let _ = app_handle.emit("kite-auth-complete", payload);
+        let _ = app_handle.emit("upstox-auth-complete", payload);
     });
 
     Ok(format!(
         "Login page opened. Complete login in your browser. \
          (Redirect URL: http://127.0.0.1:{}/login)",
-        kite_auth::KITE_CALLBACK_PORT
+        upstox_auth::UPSTOX_CALLBACK_PORT
     ))
+}
+
+#[tauri::command]
+fn save_analytics_token(token: String) -> Result<(), String> {
+    upstox_auth::save_analytics_token(token)
+}
+
+#[tauri::command]
+fn clear_analytics_token() -> Result<(), String> {
+    storage::clear_analytics_token()
 }
 
 // ─── Drawing Storage Commands ───────────────────────────────────────────────
@@ -272,7 +282,7 @@ async fn check_price_alerts() -> Result<(), String> {
     let mut triggered_symbols: Vec<String> = Vec::new();
 
     for (symbol, symbol_alerts) in symbol_map {
-        match kite_api::get_chart_data(&symbol, "day").await {
+        match upstox_api::get_chart_data(&symbol, "day").await {
             Ok(resp) => {
                 println!("Price alerts check for {}", symbol);
                 if let Some(candle) = resp.candles.last() {
@@ -317,8 +327,8 @@ async fn check_price_alerts() -> Result<(), String> {
 // ─── Auth Commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn kite_logout() -> Result<(), String> {
-    kite_auth::logout()
+fn upstox_logout() -> Result<(), String> {
+    upstox_auth::logout()
 }
 
 // ─── App entry point ──────────────────────────────────────────────────────────
@@ -358,10 +368,12 @@ pub fn run() {
             get_fetch_settings,
             update_fetch_settings,
             get_auth_status,
-            save_kite_credentials,
-            get_saved_kite_credentials,
-            kite_start_login,
-            kite_logout,
+            save_upstox_credentials,
+            get_saved_upstox_credentials,
+            upstox_start_login,
+            upstox_logout,
+            save_analytics_token,
+            clear_analytics_token,
             load_sr_drawings,
             save_sr_drawings,
             clear_sr_drawings,
