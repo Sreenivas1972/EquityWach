@@ -86,3 +86,19 @@ export interface ColorFilteredSymbol {
   color: string | null;
   tag_color: string | null;
 }
+
+export interface NewsArticle {
+  heading: string;
+  summary: string;
+  thumbnail: string | null;
+  article_link: string;
+  published_time: number;
+}
+
+export interface NewsResponse {
+  data: Record<string, NewsArticle[]>;
+  page_number: number;
+  page_size: number;
+  total_records: number;
+  total_pages: number;
+}

@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, ColorFilteredSymbol, FetchSettings, LastSelection, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
+use models::{ChartDataResponse, ColorFilteredSymbol, FetchSettings, LastSelection, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -331,6 +331,19 @@ fn upstox_logout() -> Result<(), String> {
     upstox_auth::logout()
 }
 
+// ─── News Commands ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_news(instrument_keys: Vec<String>) -> Result<NewsResponse, String> {
+    upstox_api::get_news(instrument_keys).await
+}
+
+#[tauri::command]
+fn lookup_instrument_keys(symbols: Vec<(String, String)>) -> Result<Vec<(String, Option<String>)>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::lookup_instrument_keys(&symbols, &conn).map_err(|e| e.to_string())
+}
+
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -385,6 +398,8 @@ pub fn run() {
             get_all_price_alerts,
             delete_price_alert,
             check_price_alerts,
+            get_news,
+            lookup_instrument_keys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -438,6 +438,20 @@ pub fn lookup_instrument_key(
     }
 }
 
+pub fn lookup_instrument_keys(
+    symbols: &[(String, String)],
+    conn: &Connection,
+) -> SqlResult<Vec<(String, Option<String>)>> {
+    let mut results = Vec::new();
+    
+    for (tradingsymbol, exchange) in symbols {
+        let key = lookup_instrument_key(tradingsymbol, exchange, conn)?;
+        results.push((tradingsymbol.clone(), key));
+    }
+    
+    Ok(results)
+}
+
 pub fn get_instruments_count(conn: &Connection) -> SqlResult<i64> {
     conn.query_row("SELECT COUNT(*) FROM instruments", [], |row| row.get(0))
 }

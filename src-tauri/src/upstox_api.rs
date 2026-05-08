@@ -1,11 +1,13 @@
 use chrono::{Datelike, Timelike, Duration, TimeZone, Utc};
 use serde::Deserialize;
 use rusqlite::params;
+use std::collections::HashMap;
 
-use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, PivotSource};
+use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, NewsArticle, NewsResponse, PivotSource};
 use crate::storage;
 
 const UPSTOX_V3_BASE: &str = "https://api.upstox.com/v3";
+const UPSTOX_V2_BASE: &str = "https://api.upstox.com/v2";
 const UPSTOX_INSTRUMENTS_URL: &str = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz";
 
 pub async fn refresh_instruments() -> Result<usize, String> {
@@ -761,4 +763,118 @@ fn serve_cached_or_error(
             warning: Some(warning.to_string()),
         })
     }
+}
+
+pub async fn get_news(instrument_keys: Vec<String>) -> Result<NewsResponse, String> {
+    if instrument_keys.is_empty() {
+        return Err("No instrument keys provided".to_string());
+    }
+
+    if instrument_keys.len() > 30 {
+        return Err("Maximum 30 instrument keys allowed per request".to_string());
+    }
+
+    let access_token = get_access_token()?;
+    let keys_str = instrument_keys.join(",");
+    
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+    
+    let url = format!(
+        "{}/news?category=instrument_keys&instrument_keys={}",
+        UPSTOX_V2_BASE,
+        urlencoding::encode(&keys_str)
+    );
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if status == 403 || status == 401 {
+            return Err("Authentication expired. Please login again.".to_string());
+        }
+        return Err(format!("Upstox API error {}: {}", status, text));
+    }
+
+    #[derive(Deserialize)]
+    struct UpstoxNewsResponse {
+        status: String,
+        data: Option<HashMap<String, Vec<UpstoxNewsArticle>>>,
+        metadata: Option<UpstoxNewsMetadata>,
+    }
+
+    #[derive(Deserialize)]
+    struct UpstoxNewsArticle {
+        heading: String,
+        summary: String,
+        thumbnail: Option<String>,
+        article_link: String,
+        published_time: i64,
+    }
+
+    #[derive(Deserialize)]
+    struct UpstoxNewsMetadata {
+        page: UpstoxNewsPage,
+    }
+
+    #[derive(Deserialize)]
+    struct UpstoxNewsPage {
+        page_number: i32,
+        page_size: i32,
+        total_records: i32,
+        total_pages: i32,
+    }
+
+    let upstox: UpstoxNewsResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    if upstox.status != "success" {
+        return Err("News API returned error status".to_string());
+    }
+
+    let data = upstox.data.unwrap_or_default();
+    let metadata = upstox.metadata.unwrap_or(UpstoxNewsMetadata {
+        page: UpstoxNewsPage {
+            page_number: 1,
+            page_size: 100,
+            total_records: 0,
+            total_pages: 0,
+        },
+    });
+
+    let news_data: HashMap<String, Vec<NewsArticle>> = data
+        .into_iter()
+        .map(|(key, articles)| {
+            let news_articles: Vec<NewsArticle> = articles
+                .into_iter()
+                .map(|a| NewsArticle {
+                    heading: a.heading,
+                    summary: a.summary,
+                    thumbnail: a.thumbnail,
+                    article_link: a.article_link,
+                    published_time: a.published_time,
+                })
+                .collect();
+            (key, news_articles)
+        })
+        .collect();
+
+    Ok(NewsResponse {
+        data: news_data,
+        page_number: metadata.page.page_number,
+        page_size: metadata.page.page_size,
+        total_records: metadata.page.total_records,
+        total_pages: metadata.page.total_pages,
+    })
 }

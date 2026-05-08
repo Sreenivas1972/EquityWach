@@ -5,6 +5,7 @@ import type {
   ColorFilteredSymbol,
   FetchSettings,
   LastSelection,
+  NewsResponse,
   PivotSource,
   PriceAlert,
   RetentionSettings,
@@ -135,4 +136,11 @@ export const api = {
 
   checkPriceAlerts: () =>
     invoke<void>("check_price_alerts"),
+
+  // ── News ─────────────────────────────────────────────────────────────────────
+  getNews: (instrumentKeys: string[]) =>
+    invoke<NewsResponse>("get_news", { instrumentKeys }),
+
+  lookupInstrumentKeys: (symbols: Array<[string, string]>) =>
+    invoke<Array<[string, string | null]>>("lookup_instrument_keys", { symbols }),
 };

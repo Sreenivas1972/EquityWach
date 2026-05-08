@@ -17,6 +17,7 @@ interface Props {
   onIntervalChange: (interval: Interval) => void;
   onOpenSettings: () => void;
   onOpenWindow: (mode: DetachedWindowMode) => void;
+  onOpenNews: () => void;
   onUpdateSymbolColor: (symbol: string, color: string | null) => void;
   onUpdateSymbolTagColor: (symbol: string, tagColor: string | null) => void;
   onRemoveSymbol: (symbol: string) => void;
@@ -48,6 +49,7 @@ export default function WatchlistPanel({
   onIntervalChange,
   onOpenSettings,
   onOpenWindow,
+  onOpenNews,
   onUpdateSymbolColor,
   onUpdateSymbolTagColor,
   onRemoveSymbol,
@@ -174,6 +176,12 @@ export default function WatchlistPanel({
                   ▾
                 </summary>
                 <div className="window-menu-popover" role="menu">
+                  <button
+                    type="button"
+                    onClick={onOpenNews}
+                  >
+                    📰 News
+                  </button>
                   <button
                     type="button"
                     onClick={() => onOpenWindow("fib")}

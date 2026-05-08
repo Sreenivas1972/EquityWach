@@ -6,9 +6,11 @@ import BaseChartPanel from "./components/BaseChartPanel";
 import SRChartPanel from "./components/SRChartPanel";
 import EMAChartPanel from "./components/EMAChartPanel";
 import FibChartPanel from "./components/FibChartPanel";
+import NewsPanel from "./components/NewsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
 import WatchlistPicker from "./components/WatchlistPicker";
+import { useNews } from "./hooks/useNews";
 import { api } from "./services/tauriApi";
 import type { CandleData, ColorFilteredSymbol, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
@@ -80,10 +82,32 @@ export default function App() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [lastPickedWatchlist, setLastPickedWatchlist] = useState<string | null>(null);
 
+  const [isNewsOpen, setIsNewsOpen] = useState(false);
+
   const [colorFilterMode, setColorFilterMode] = useState(false);
   const [colorFilterValue, setColorFilterValue] = useState<{ color: string | null; tagColor: string | null }>({ color: null, tagColor: null });
   const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
   const [isLoadingColorFilter, setIsLoadingColorFilter] = useState(false);
+
+  const { isLoading: isLoadingNews, error: newsError, getNewsForSymbol } = useNews(
+    colorFilterMode ? colorFilteredSymbols : sortedSymbols,
+    selectedSymbol,
+    selectedWatchlist,
+    isNewsOpen
+  );
+
+  const [currentNews, setCurrentNews] = useState<import("./types").NewsArticle[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!selectedSymbol) {
+      setCurrentNews(undefined);
+      return;
+    }
+
+    getNewsForSymbol(selectedSymbol).then(news => {
+      setCurrentNews(news);
+    });
+  }, [selectedSymbol, getNewsForSymbol]);
 
   useEffect(() => {
     async function boot() {
@@ -557,6 +581,7 @@ export default function App() {
             onIntervalChange={handleIntervalChange}
             onOpenSettings={() => setView("settings")}
             onOpenWindow={handleOpenWindow}
+            onOpenNews={() => setIsNewsOpen(true)}
             onUpdateSymbolColor={handleUpdateSymbolColor}
             onUpdateSymbolTagColor={handleUpdateSymbolTagColor}
             onRemoveSymbol={handleRemoveSymbol}
@@ -581,6 +606,15 @@ export default function App() {
         onClose={() => setIsPickerOpen(false)}
         onSelect={handleMoveToWatchlist}
       />
+
+      {isNewsOpen && (
+        <NewsPanel
+          articles={currentNews}
+          isLoading={isLoadingNews}
+          error={newsError}
+          onClose={() => setIsNewsOpen(false)}
+        />
+      )}
     </div>
   );
 }
