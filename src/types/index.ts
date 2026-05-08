@@ -77,6 +77,17 @@ export interface PriceAlert {
   created_at: string;
 }
 
+export interface LongPosition {
+  id: string;
+  symbol: string;
+  entry_price: number;
+  sl_price: number;
+  target_price: number;
+  entry_time: number;
+  interval: string;
+  created_at: string;
+}
+
 export interface ColorFilteredSymbol {
   symbol: string;
   watchlist_name: string;

@@ -85,6 +85,14 @@ export default function WatchlistPanel({
     'green': '#3fb950',
   };
 
+  const tagColorDisplay: Record<string, string> = {
+    'violet': '#8b5cf6',
+    'indigo': '#6366f1',
+    'blue': '#3b82f6',
+    'orange': '#f97316',
+    'pink': '#ec4899',
+  };
+
   const statusColorOptions = [
     { value: 'red', label: 'Red' },
     { value: 'yellow', label: 'Yellow' },
@@ -104,6 +112,11 @@ export default function WatchlistPanel({
     return statusColorDisplay[color] || color;
   }
 
+  function getDisplayTagColor(tagColor: string | null): string | undefined {
+    if (!tagColor) return undefined;
+    return tagColorDisplay[tagColor] || tagColor;
+  }
+
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
     if (
@@ -117,6 +130,10 @@ export default function WatchlistPanel({
     }
 
     if (!selectedSymbol) return;
+
+    if (event.metaKey || event.ctrlKey) {
+      return;
+    }
 
     const key = event.key.toLowerCase();
     if (statusColors[key]) {
@@ -329,7 +346,7 @@ export default function WatchlistPanel({
                   title={`${sym.symbol} (${sym.watchlist_name})`}
                   style={{
                     borderRight: sym.color ? `10px solid ${getDisplayColor(sym.color)}` : undefined,
-                    borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
+                    borderLeft: sym.tag_color ? `10px solid ${getDisplayTagColor(sym.tag_color)}` : undefined
                   }}
                 >
                   <span className="symbol-name">{displaySymbol(sym.symbol)}</span>
@@ -352,7 +369,7 @@ export default function WatchlistPanel({
                   title={sym.symbol}
                   style={{
                     borderRight: sym.color ? `10px solid ${getDisplayColor(sym.color)}` : undefined,
-                    borderLeft: sym.tag_color ? `10px solid ${sym.tag_color}` : undefined
+                    borderLeft: sym.tag_color ? `10px solid ${getDisplayTagColor(sym.tag_color)}` : undefined
                   }}
                 >
                   {displaySymbol(sym.symbol)}

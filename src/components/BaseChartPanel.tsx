@@ -6,7 +6,7 @@ import {
   UTCTimestamp,
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
-import type { CandleData, Interval, PivotSource, PriceAlert, SymbolSearchResult } from "../types";
+import type { CandleData, Interval, LongPosition, PivotSource, PriceAlert, SymbolSearchResult } from "../types";
 import { toChartTime } from "../windows/shared";
 
 type PivotType = 'camarilla' | 'standard' | 'none';
@@ -142,6 +142,9 @@ function BaseChartPanelComponent({
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [chartHeight, setChartHeight] = useState(0);
   const [pivotType, setPivotType] = useState<PivotType>('camarilla');
+
+  const [longPositions, setLongPositions] = useState<LongPosition[]>([]);
+  const positionSeriesRef = useRef<Record<string, { sl: any; target: any }>>({});
 
   // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
@@ -281,6 +284,46 @@ function BaseChartPanelComponent({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [symbol, candles]);
 
+  // ── Keyboard shortcut for long position tool (Cmd+B) ───────────────────────
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        if (!symbol || candles.length === 0) return;
+        
+        const crosshairPrice = crosshairPriceRef.current;
+        const entryPrice = crosshairPrice !== null && crosshairPrice !== undefined 
+          ? crosshairPrice 
+          : candles[candles.length - 1].close;
+        
+        const slPrice = entryPrice * 0.95;
+        const targetPrice = entryPrice * 1.10;
+        const entryTime = candles[candles.length - 1].time;
+        
+        try {
+          const id = await api.addLongPosition(symbol, entryPrice, slPrice, targetPrice, entryTime, interval);
+          const newPosition: LongPosition = {
+            id,
+            symbol,
+            entry_price: entryPrice,
+            sl_price: slPrice,
+            target_price: targetPrice,
+            entry_time: entryTime,
+            interval,
+            created_at: new Date().toISOString(),
+          };
+          setLongPositions(prev => [...prev, newPosition]);
+        } catch (err) {
+          console.error('Failed to save position:', err);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [symbol, candles, interval]);
+
   // ── Fetch alerts when candles are loaded ────────────────────────────────
   useEffect(() => {
     if (!symbol) {
@@ -289,6 +332,15 @@ function BaseChartPanelComponent({
     }
     api.getPriceAlerts(symbol).then(setAlerts).catch(() => {});
   }, [candles]);
+
+  // ── Fetch long positions when symbol/interval changes ────────────────────
+  useEffect(() => {
+    if (!symbol) {
+      setLongPositions([]);
+      return;
+    }
+    api.getLongPositions(symbol, interval).then(setLongPositions).catch(() => {});
+  }, [symbol, interval]);
 
   // ── Track chart container height for alert button positioning ─────────────
   useEffect(() => {
@@ -475,6 +527,93 @@ function BaseChartPanelComponent({
     });
   }, [alerts]);
 
+  // ── Render long position lines ───────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current || candles.length === 0) {
+      Object.values(positionSeriesRef.current).forEach((series) => {
+        try { series.sl?.setData([]); } catch {}
+        try { series.target?.setData([]); } catch {}
+      });
+      positionSeriesRef.current = {};
+      return;
+    }
+
+    if (longPositions.length === 0) {
+      Object.values(positionSeriesRef.current).forEach((series) => {
+        try { series.sl?.setData([]); } catch {}
+        try { series.target?.setData([]); } catch {}
+      });
+      positionSeriesRef.current = {};
+      return;
+    }
+
+    const chart = chartRef.current;
+    const formatted = candles.map((c) => ({
+      time: toChartTime(c.time, interval),
+    }));
+
+    longPositions.forEach((position) => {
+      const entryTimeChart = toChartTime(position.entry_time, interval);
+
+      const slData = formatted
+        .filter((point) => {
+          const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
+          const entryTs = typeof entryTimeChart === "string" ? parseDateString(entryTimeChart) : entryTimeChart;
+          return pointTs >= entryTs;
+        })
+        .map((point) => ({
+          time: point.time,
+          value: position.sl_price,
+        }));
+
+      const targetData = formatted
+        .filter((point) => {
+          const pointTs = typeof point.time === "string" ? parseDateString(point.time) : point.time;
+          const entryTs = typeof entryTimeChart === "string" ? parseDateString(entryTimeChart) : entryTimeChart;
+          return pointTs >= entryTs;
+        })
+        .map((point) => ({
+          time: point.time,
+          value: position.target_price,
+        }));
+
+      if (!positionSeriesRef.current[position.id]) {
+        positionSeriesRef.current[position.id] = {
+          sl: chart.addSeries(LineSeries, {
+            color: "#ef4444",
+            lineWidth: 2,
+            lineStyle: 0,
+            priceLineVisible: true,
+            lastValueVisible: true,
+            crosshairMarkerVisible: false,
+            title: "SL",
+          }),
+          target: chart.addSeries(LineSeries, {
+            color: "#22c55e",
+            lineWidth: 2,
+            lineStyle: 0,
+            priceLineVisible: true,
+            lastValueVisible: true,
+            crosshairMarkerVisible: false,
+            title: "Target",
+          }),
+        };
+      }
+
+      try {
+        positionSeriesRef.current[position.id].sl.setData(slData as any);
+        positionSeriesRef.current[position.id].target.setData(targetData as any);
+      } catch {}
+    });
+
+    return () => {
+      Object.values(positionSeriesRef.current).forEach((series) => {
+        try { series.sl?.setData([]); } catch {}
+        try { series.target?.setData([]); } catch {}
+      });
+    };
+  }, [longPositions, candles, interval]);
+
   const handleDeleteAlert = useCallback((id: string) => {
     api.deletePriceAlert(id).then(() => {
       if (symbol) {
@@ -482,6 +621,35 @@ function BaseChartPanelComponent({
       }
     }).catch(() => {});
   }, [symbol]);
+
+  const handleClearPosition = useCallback(async (id: string) => {
+    try {
+      await api.deleteLongPosition(id);
+      setLongPositions(prev => prev.filter(p => p.id !== id));
+    } catch (e) {
+      console.error('Failed to delete position:', e);
+    }
+  }, []);
+
+  const handleDragLine = useCallback(async (id: string, type: 'sl' | 'target', newPrice: number) => {
+    const position = longPositions.find(p => p.id === id);
+    if (!position) return;
+    
+    const updatedSl = type === 'sl' ? newPrice : position.sl_price;
+    const updatedTarget = type === 'target' ? newPrice : position.target_price;
+    
+    setLongPositions(prev => prev.map(p => 
+      p.id === id 
+        ? { ...p, sl_price: updatedSl, target_price: updatedTarget }
+        : p
+    ));
+    
+    try {
+      await api.updateLongPosition(id, updatedSl, updatedTarget);
+    } catch (e) {
+      console.error('Failed to update position:', e);
+    }
+  }, [longPositions]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
@@ -583,6 +751,152 @@ function BaseChartPanelComponent({
 
       {/* Chart area */}
       <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+        {longPositions.length > 0 && seriesRef.current && (
+          <div className="position-drag-handles" style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            pointerEvents: "none",
+            zIndex: 15,
+          }}>
+            {longPositions.map((position) => (
+              <div key={position.id}>
+                {/* SL Drag Handle */}
+                {(() => {
+                  const y = seriesRef.current?.priceToCoordinate(position.sl_price);
+                  if (y === null || y === undefined) return null;
+                  return (
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 50,
+                        top: y - 12,
+                        pointerEvents: "auto",
+                        cursor: "ns-resize",
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startY = e.clientY;
+                        const startPrice = position.sl_price;
+                        
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const deltaY = moveEvent.clientY - startY;
+                          const priceDelta = -deltaY * 0.1;
+                          handleDragLine(position.id, 'sl', startPrice + priceDelta);
+                        };
+                        
+                        const handleMouseUp = () => {
+                          window.removeEventListener('mousemove', handleMouseMove);
+                          window.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        
+                        window.addEventListener('mousemove', handleMouseMove);
+                        window.addEventListener('mouseup', handleMouseUp);
+                      }}
+                    >
+                      <div style={{
+                        background: "#ef4444",
+                        color: "#fff",
+                        border: "2px solid #fff",
+                        borderRadius: 4,
+                        padding: "4px 8px",
+                        fontSize: 11,
+                        fontWeight: "bold",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                        userSelect: "none",
+                      }}>
+                        SL: {position.sl_price.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                {/* Target Drag Handle */}
+                {(() => {
+                  const y = seriesRef.current?.priceToCoordinate(position.target_price);
+                  if (y === null || y === undefined) return null;
+                  return (
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 50,
+                        top: y - 12,
+                        pointerEvents: "auto",
+                        cursor: "ns-resize",
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startY = e.clientY;
+                        const startPrice = position.target_price;
+                        
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const deltaY = moveEvent.clientY - startY;
+                          const priceDelta = -deltaY * 0.1;
+                          handleDragLine(position.id, 'target', startPrice + priceDelta);
+                        };
+                        
+                        const handleMouseUp = () => {
+                          window.removeEventListener('mousemove', handleMouseMove);
+                          window.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        
+                        window.addEventListener('mousemove', handleMouseMove);
+                        window.addEventListener('mouseup', handleMouseUp);
+                      }}
+                    >
+                      <div style={{
+                        background: "#22c55e",
+                        color: "#fff",
+                        border: "2px solid #fff",
+                        borderRadius: 4,
+                        padding: "4px 8px",
+                        fontSize: 11,
+                        fontWeight: "bold",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                        userSelect: "none",
+                      }}>
+                        TGT: {position.target_price.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                {/* Clear Position Button for this position */}
+                {(() => {
+                  const y = seriesRef.current?.priceToCoordinate(position.entry_price);
+                  if (y === null || y === undefined) return null;
+                  return (
+                    <div style={{
+                      position: "absolute",
+                      right: 50,
+                      top: y - 12,
+                      pointerEvents: "auto",
+                    }}>
+                      <button
+                        onClick={() => handleClearPosition(position.id)}
+                        style={{
+                          background: "#6b7280",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 4,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          cursor: "pointer",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                        }}
+                        title="Remove this position"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        )}
         {alerts.length > 0 && (
           <div className="alert-buttons-overlay" style={{
             position: "absolute",
