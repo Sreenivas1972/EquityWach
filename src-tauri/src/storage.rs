@@ -418,7 +418,8 @@ pub fn save_instruments(instruments: &[InstrumentInfo], conn: &Connection) -> Sq
     }
     Ok(())
 }
-
+/*
+This was used in kite API version (main branch)
 pub fn lookup_instrument_token(
     tradingsymbol: &str,
     exchange: &str,
@@ -434,7 +435,7 @@ pub fn lookup_instrument_token(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
-}
+}*/
 
 pub fn lookup_instrument_key(
     tradingsymbol: &str,
