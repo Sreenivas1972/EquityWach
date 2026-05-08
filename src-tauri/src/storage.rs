@@ -23,6 +23,9 @@ pub fn ensure_app_dir() -> std::io::Result<()> {
 fn db_path() -> PathBuf {
     get_app_data_dir().join("candles.db")
 }
+fn instruments_db_path() -> PathBuf {
+    get_app_data_dir().join("upstox_instruments.db")
+}
 fn settings_path() -> PathBuf {
     get_app_data_dir().join("settings.json")
 }
@@ -62,18 +65,6 @@ pub fn open_db() -> SqlResult<Connection> {
             last_synced INTEGER NOT NULL,
             PRIMARY KEY (symbol, interval)
         );
-        CREATE TABLE IF NOT EXISTS instruments (
-            instrument_token INTEGER NOT NULL,
-            tradingsymbol    TEXT    NOT NULL,
-            exchange         TEXT    NOT NULL,
-            name             TEXT    NOT NULL,
-            instrument_key   TEXT,
-            PRIMARY KEY (instrument_token)
-        );
-        CREATE INDEX IF NOT EXISTS idx_instruments_sym
-            ON instruments(tradingsymbol, exchange);
-        CREATE INDEX IF NOT EXISTS idx_instruments_key
-            ON instruments(instrument_key);
         CREATE INDEX IF NOT EXISTS idx_candles_lookup
             ON candles(symbol, interval, timestamp);
         
@@ -183,7 +174,31 @@ pub fn open_db() -> SqlResult<Connection> {
         conn.execute("UPDATE fib_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
     }
 
-    // Migration: Add instrument_key to instruments
+    Ok(conn)
+}
+
+// ─── Instruments Database ─────────────────────────────────────────────────────
+
+pub fn open_instruments_db() -> SqlResult<Connection> {
+    let conn = Connection::open(instruments_db_path())?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL;
+        CREATE TABLE IF NOT EXISTS instruments (
+            instrument_token INTEGER NOT NULL,
+            tradingsymbol    TEXT    NOT NULL,
+            exchange         TEXT    NOT NULL,
+            name             TEXT    NOT NULL,
+            instrument_key   TEXT,
+            PRIMARY KEY (instrument_token)
+        );
+        CREATE INDEX IF NOT EXISTS idx_instruments_sym
+            ON instruments(tradingsymbol, exchange);
+        CREATE INDEX IF NOT EXISTS idx_instruments_key
+            ON instruments(instrument_key);
+        ",
+    )?;
+
+    // Migration: Add instrument_key if not exists
     let has_instrument_key = conn
         .prepare("SELECT COUNT(*) FROM pragma_table_info('instruments') WHERE name='instrument_key'")?
         .query_row([], |row| row.get::<_, i64>(0))? > 0;

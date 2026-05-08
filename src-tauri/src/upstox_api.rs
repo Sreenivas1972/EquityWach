@@ -85,7 +85,7 @@ pub async fn refresh_instruments() -> Result<usize, String> {
 
     let count = instruments.len();
     tokio::task::spawn_blocking(move || {
-        let conn = storage::open_db().map_err(|e| e.to_string())?;
+        let conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
         storage::save_instruments(&instruments, &conn).map_err(|e| e.to_string())
     })
     .await
@@ -116,6 +116,7 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
     let (cached, latest_ts, last_sync, instrument_key) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<String>), String> {
             let conn = storage::open_db().map_err(|e| e.to_string())?;
+            let instr_conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
             let cached = storage::get_cached_candles(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
             let latest_ts = storage::get_latest_candle_timestamp(&sym_clone, &int_clone, &conn)
@@ -123,7 +124,7 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
             let last_sync = storage::get_last_synced(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
             let instrument_key =
-                storage::lookup_instrument_key(&sym_clone, &exc_clone, &conn)
+                storage::lookup_instrument_key(&sym_clone, &exc_clone, &instr_conn)
                     .map_err(|e| e.to_string())?;
             Ok((cached, latest_ts, last_sync, instrument_key))
         })
@@ -226,11 +227,12 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
     let (cached, _, last_sync, instrument_key) =
         tokio::task::spawn_blocking(move || -> Result<(Vec<CandleData>, Option<i64>, Option<i64>, Option<String>), String> {
             let conn = storage::open_db().map_err(|e| e.to_string())?;
+            let instr_conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
             let cached = storage::get_cached_candles(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
             let last_sync = storage::get_last_synced(&sym_clone, &int_clone, &conn)
                 .map_err(|e| e.to_string())?;
-            let instrument_key = storage::lookup_instrument_key(&sym_clone, &exc_clone, &conn)
+            let instrument_key = storage::lookup_instrument_key(&sym_clone, &exc_clone, &instr_conn)
                 .map_err(|e| e.to_string())?;
             Ok((cached, None, last_sync, instrument_key))
         })
@@ -319,9 +321,10 @@ pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<Piv
 
     let (cached_meta, instrument_key) = tokio::task::spawn_blocking(move || -> Result<(Option<storage::PivotMeta>, Option<String>), String> {
         let conn = storage::open_db().map_err(|e| e.to_string())?;
+        let instr_conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
         let pivot_type = if interval_clone == "day" { "month" } else { "quarter" };
         let meta = storage::get_pivot_meta(&trading_sym_clone, pivot_type, &conn).map_err(|e| e.to_string())?;
-        let key = storage::lookup_instrument_key(&trading_sym_clone, &exchange_clone, &conn).map_err(|e| e.to_string())?;
+        let key = storage::lookup_instrument_key(&trading_sym_clone, &exchange_clone, &instr_conn).map_err(|e| e.to_string())?;
         Ok((meta, key))
     })
     .await

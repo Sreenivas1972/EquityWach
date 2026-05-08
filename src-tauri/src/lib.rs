@@ -109,7 +109,7 @@ async fn refresh_instruments() -> Result<usize, String> {
 
 #[tauri::command]
 fn get_instruments_count() -> Result<i64, String> {
-    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    let conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
     storage::get_instruments_count(&conn).map_err(|e| e.to_string())
 }
 
@@ -340,7 +340,7 @@ async fn get_news(instrument_keys: Vec<String>) -> Result<NewsResponse, String> 
 
 #[tauri::command]
 fn lookup_instrument_keys(symbols: Vec<(String, String)>) -> Result<Vec<(String, Option<String>)>, String> {
-    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    let conn = storage::open_instruments_db().map_err(|e| e.to_string())?;
     storage::lookup_instrument_keys(&symbols, &conn).map_err(|e| e.to_string())
 }
 
