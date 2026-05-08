@@ -138,6 +138,18 @@ pub struct PriceAlert {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LongPosition {
+    pub id: String,
+    pub symbol: String,
+    pub entry_price: f64,
+    pub sl_price: f64,
+    pub target_price: f64,
+    pub entry_time: i64,
+    pub interval: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColorFilteredSymbol {
     pub symbol: String,
     pub watchlist_name: String,

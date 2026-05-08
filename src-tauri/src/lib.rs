@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, ColorFilteredSymbol, FetchSettings, LastSelection, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
+use models::{ChartDataResponse, ColorFilteredSymbol, FetchSettings, LastSelection, LongPosition, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -260,6 +260,40 @@ fn delete_price_alert(id: String) -> Result<(), String> {
     storage::delete_price_alert(&id, &conn).map_err(|e| e.to_string())
 }
 
+// ─── Long Positions ───────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn add_long_position(
+    symbol: String,
+    entry_price: f64,
+    sl_price: f64,
+    target_price: f64,
+    entry_time: i64,
+    interval: String,
+) -> Result<String, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::add_long_position(&symbol, entry_price, sl_price, target_price, entry_time, &interval, &conn)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_long_positions(symbol: String, interval: String) -> Result<Vec<LongPosition>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::get_long_positions_for_symbol(&symbol, &interval, &conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_long_position(id: String, sl_price: f64, target_price: f64) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::update_long_position(&id, sl_price, target_price, &conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_long_position(id: String) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::delete_long_position(&id, &conn).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn check_price_alerts() -> Result<(), String> {
     let watchlist_name = "PriceAlerts";
@@ -398,6 +432,10 @@ pub fn run() {
             get_all_price_alerts,
             delete_price_alert,
             check_price_alerts,
+            add_long_position,
+            get_long_positions,
+            update_long_position,
+            delete_long_position,
             get_news,
             lookup_instrument_keys,
         ])

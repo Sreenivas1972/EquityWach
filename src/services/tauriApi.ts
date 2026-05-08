@@ -5,6 +5,7 @@ import type {
   ColorFilteredSymbol,
   FetchSettings,
   LastSelection,
+  LongPosition,
   NewsResponse,
   PivotSource,
   PriceAlert,
@@ -136,6 +137,33 @@ export const api = {
 
   checkPriceAlerts: () =>
     invoke<void>("check_price_alerts"),
+
+  // ── Long Positions ───────────────────────────────────────────────────────────
+  addLongPosition: (
+    symbol: string,
+    entryPrice: number,
+    slPrice: number,
+    targetPrice: number,
+    entryTime: number,
+    interval: string
+  ) =>
+    invoke<string>("add_long_position", {
+      symbol,
+      entryPrice,
+      slPrice,
+      targetPrice,
+      entryTime,
+      interval,
+    }),
+
+  getLongPositions: (symbol: string, interval: string) =>
+    invoke<LongPosition[]>("get_long_positions", { symbol, interval }),
+
+  updateLongPosition: (id: string, slPrice: number, targetPrice: number) =>
+    invoke<void>("update_long_position", { id, slPrice, targetPrice }),
+
+  deleteLongPosition: (id: string) =>
+    invoke<void>("delete_long_position", { id }),
 
   // ── News ─────────────────────────────────────────────────────────────────────
   getNews: (instrumentKeys: string[]) =>

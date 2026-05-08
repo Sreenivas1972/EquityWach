@@ -131,6 +131,20 @@ pub fn open_db() -> SqlResult<Connection> {
             created_ts    INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_price_alerts_symbol ON price_alerts(symbol);
+        
+        -- Long positions
+        CREATE TABLE IF NOT EXISTS long_positions (
+            id            TEXT    NOT NULL PRIMARY KEY,
+            symbol        TEXT    NOT NULL,
+            entry_price   REAL    NOT NULL,
+            sl_price      REAL    NOT NULL,
+            target_price  REAL    NOT NULL,
+            entry_time    INTEGER NOT NULL,
+            interval      TEXT    NOT NULL,
+            created_at    TEXT    NOT NULL,
+            created_ts    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_long_positions_symbol ON long_positions(symbol);
         ",
     )?;
     
@@ -1020,6 +1034,68 @@ pub fn add_price_alert(symbol: &str, target_price: f64, direction: &str, conn: &
 
 pub fn delete_price_alert(id: &str, conn: &Connection) -> SqlResult<()> {
     conn.execute("DELETE FROM price_alerts WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// ─── Long Positions (SQLite) ─────────────────────────────────────────────────
+
+pub fn get_long_positions_for_symbol(symbol: &str, interval: &str, conn: &Connection) -> SqlResult<Vec<crate::models::LongPosition>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, symbol, entry_price, sl_price, target_price, entry_time, interval, created_at FROM long_positions WHERE symbol = ?1 AND interval = ?2 ORDER BY created_ts ASC"
+    )?;
+    let rows = stmt
+        .query_map(params![symbol, interval], |row| {
+            Ok(crate::models::LongPosition {
+                id: row.get(0)?,
+                symbol: row.get(1)?,
+                entry_price: row.get(2)?,
+                sl_price: row.get(3)?,
+                target_price: row.get(4)?,
+                entry_time: row.get(5)?,
+                interval: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn add_long_position(
+    symbol: &str,
+    entry_price: f64,
+    sl_price: f64,
+    target_price: f64,
+    entry_time: i64,
+    interval: &str,
+    conn: &Connection,
+) -> SqlResult<String> {
+    let id = format!("pos_{}_{}", symbol, Utc::now().timestamp_millis());
+    let created_at = ts_to_rfc3339(Utc::now().timestamp());
+    let created_ts = Utc::now().timestamp();
+
+    conn.execute(
+        "INSERT INTO long_positions (id, symbol, entry_price, sl_price, target_price, entry_time, interval, created_at, created_ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![id, symbol, entry_price, sl_price, target_price, entry_time, interval, created_at, created_ts],
+    )?;
+    Ok(id)
+}
+
+pub fn update_long_position(
+    id: &str,
+    sl_price: f64,
+    target_price: f64,
+    conn: &Connection,
+) -> SqlResult<()> {
+    conn.execute(
+        "UPDATE long_positions SET sl_price = ?1, target_price = ?2 WHERE id = ?3",
+        params![sl_price, target_price, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_long_position(id: &str, conn: &Connection) -> SqlResult<()> {
+    conn.execute("DELETE FROM long_positions WHERE id = ?1", params![id])?;
     Ok(())
 }
 
