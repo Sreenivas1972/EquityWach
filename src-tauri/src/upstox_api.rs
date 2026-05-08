@@ -5,17 +5,17 @@ use rusqlite::params;
 use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, PivotSource};
 use crate::storage;
 
-const UPSTOX_V2_BASE: &str = "https://api.upstox.com/v2";
 const UPSTOX_V3_BASE: &str = "https://api.upstox.com/v3";
+const UPSTOX_INSTRUMENTS_URL: &str = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz";
 
 pub async fn refresh_instruments() -> Result<usize, String> {
-    let access_token = get_access_token()?;
-
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+    
     let resp = client
-        .get(format!("{}/instruments", UPSTOX_V2_BASE))
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Accept", "text/csv")
+        .get(UPSTOX_INSTRUMENTS_URL)
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
@@ -26,31 +26,44 @@ pub async fn refresh_instruments() -> Result<usize, String> {
     }
 
     let gzip_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    let csv_text = decompress_gzip(&gzip_bytes)?;
+    let json_text = decompress_gzip(&gzip_bytes)?;
+
+    #[derive(Deserialize)]
+    struct InstrumentData {
+        trading_symbol: Option<String>,
+        name: Option<String>,
+        instrument_token: Option<String>,
+        instrument_key: Option<String>,
+        exchange: Option<String>,
+        segment: Option<String>,
+        instrument_type: Option<String>,
+    }
+
+    let instruments_data: Vec<InstrumentData> = serde_json::from_str(&json_text)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
 
     let mut instruments: Vec<InstrumentInfo> = Vec::new();
-    let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
-    for result in reader.records() {
-        let rec = result.map_err(|e| e.to_string())?;
-        if rec.len() < 15 {
-            continue;
-        }
-        let trading_symbol = &rec[0];
-        let exchange = &rec[3];
-        let instrument_type = &rec[5];
-        let segment = &rec[7];
+    for inst in instruments_data {
+        let segment = inst.segment.as_deref().unwrap_or("");
+        let instrument_type = inst.instrument_type.as_deref().unwrap_or("");
+        let exchange = inst.exchange.as_deref().unwrap_or("");
         
-        if instrument_type != "EQ" || segment != "NSE_EQ" || exchange != "NSE" {
+        if segment != "NSE_EQ" || instrument_type != "EQ" || exchange != "NSE" {
             continue;
         }
         
-        let instrument_key = &rec[14];
-        if instrument_key.is_empty() {
-            continue;
-        }
+        let trading_symbol = match inst.trading_symbol {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
         
-        let instrument_token: u32 = extract_token_from_key(instrument_key)
-            .or_else(|| extract_token_from_key(&rec[0]))
+        let instrument_key = match inst.instrument_key {
+            Some(k) if !k.is_empty() => k,
+            _ => continue,
+        };
+        
+        let instrument_token: u32 = inst.instrument_token
+            .and_then(|t| t.parse().ok())
             .unwrap_or_else(|| {
                 use std::collections::hash_map::DefaultHasher;
                 use std::hash::{Hash, Hasher};
@@ -61,10 +74,10 @@ pub async fn refresh_instruments() -> Result<usize, String> {
         
         instruments.push(InstrumentInfo {
             instrument_token,
-            tradingsymbol: trading_symbol.to_string(),
+            tradingsymbol: trading_symbol,
             exchange: exchange.to_string(),
-            name: rec[2].to_string(),
-            instrument_key: Some(instrument_key.to_string()),
+            name: inst.name.unwrap_or_default(),
+            instrument_key: Some(instrument_key),
         });
     }
 
@@ -77,15 +90,6 @@ pub async fn refresh_instruments() -> Result<usize, String> {
     .map_err(|e| e.to_string())??;
 
     Ok(count)
-}
-
-fn extract_token_from_key(key: &str) -> Option<u32> {
-    let parts: Vec<&str> = key.split('|').collect();
-    if parts.len() >= 2 {
-        parts[1].parse().ok()
-    } else {
-        None
-    }
 }
 
 fn decompress_gzip(bytes: &[u8]) -> Result<String, String> {
@@ -538,13 +542,18 @@ async fn fetch_candles(
 ) -> Result<Vec<CandleData>, String> {
     let from_str = from.format("%Y-%m-%d").to_string();
     let to_str = to.format("%Y-%m-%d").to_string();
-    let api_interval = interval_to_upstox(interval);
+    let (unit, api_interval) = interval_to_upstox(interval);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+    
     let url = format!(
-        "{}/historical/candle/{}/{}/{}/{}",
+        "{}/historical-candle/{}/{}/{}/{}/{}",
         UPSTOX_V3_BASE,
         urlencoding::encode(instrument_key),
+        unit,
         api_interval,
         to_str,
         from_str
@@ -617,11 +626,11 @@ async fn fetch_candles(
     Ok(result)
 }
 
-fn interval_to_upstox(interval: &str) -> &'static str {
+fn interval_to_upstox(interval: &str) -> (&'static str, &'static str) {
     match interval {
-        "week" => "day",
-        "month" => "day",
-        _ => "day",
+        "week" => ("weeks", "1"),
+        "month" => ("months", "1"),
+        _ => ("days", "1"),
     }
 }
 

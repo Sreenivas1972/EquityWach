@@ -5,7 +5,7 @@ use crate::models::{AuthStatus, SavedUpstoxCredentials};
 use crate::storage;
 
 const UPSTOX_API_BASE: &str = "https://api.upstox.com/v2";
-pub const UPSTOX_CALLBACK_PORT: u16 = 6010;
+pub const UPSTOX_CALLBACK_PORT: u16 = 5050;
 
 pub fn get_auth_status() -> AuthStatus {
     let config = storage::load_upstox_config();
@@ -142,7 +142,11 @@ pub async fn exchange_auth_code(code: &str) -> Result<String, String> {
     let credentials = format!("{}:{}", config.api_key, config.api_secret);
     let encoded_credentials = BASE64_STANDARD.encode(credentials);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| format!("Client build error: {}", e))?;
+    
     let resp = client
         .post(format!("{}/login/authorization/token", UPSTOX_API_BASE))
         .header("Authorization", format!("Basic {}", encoded_credentials))

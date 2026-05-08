@@ -312,7 +312,7 @@ export default function SettingsPanel({ onClose }: Props) {
           </div>
           {loginMsg && <p className="settings-msg">{loginMsg}</p>}
           <p className="settings-hint">
-            Register <code>http://127.0.0.1:6010/login</code> as the redirect URL in
+            Register <code>http://127.0.0.1:5050/login</code> as the redirect URL in
             your{" "}
             <a
               href="https://developer.upstox.com/"
