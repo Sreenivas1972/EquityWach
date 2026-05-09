@@ -625,6 +625,36 @@ body {
   border-color: var(--accent);
 }
 
+.color-filter-type-buttons {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.color-filter-type-btn {
+  flex: 1;
+  padding: 4px 6px;
+  background: #3a3a3a;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #aaa;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.color-filter-type-btn:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+
+.color-filter-type-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .symbol-name {
   flex: 1;
 }

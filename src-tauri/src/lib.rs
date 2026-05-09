@@ -40,6 +40,16 @@ fn get_symbols_by_color(color: Option<String>, tag_color: Option<String>) -> Res
 }
 
 #[tauri::command]
+fn get_symbols_with_alerts() -> Result<Vec<ColorFilteredSymbol>, String> {
+    watchlists::get_symbols_with_alerts()
+}
+
+#[tauri::command]
+fn get_symbols_with_positions() -> Result<Vec<ColorFilteredSymbol>, String> {
+    watchlists::get_symbols_with_positions()
+}
+
+#[tauri::command]
 fn update_symbol_color(watchlist_name: String, symbol: String, color: Option<String>) -> Result<(), String> {
     watchlists::update_symbol_color(&watchlist_name, &symbol, color.as_deref())
 }
@@ -375,6 +385,8 @@ pub fn run() {
             load_symbols,
             search_symbol,
             get_symbols_by_color,
+            get_symbols_with_alerts,
+            get_symbols_with_positions,
             update_symbol_color,
             update_symbol_tag_color,
             remove_symbol,

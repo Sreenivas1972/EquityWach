@@ -82,6 +82,7 @@ export default function App() {
 
   const [colorFilterMode, setColorFilterMode] = useState(false);
   const [colorFilterValue, setColorFilterValue] = useState<{ color: string | null; tagColor: string | null }>({ color: null, tagColor: null });
+  const [colorFilterType, setColorFilterType] = useState<'color' | 'alerts' | 'positions'>('color');
   const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
   const [isLoadingColorFilter, setIsLoadingColorFilter] = useState(false);
 
@@ -301,7 +302,12 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!colorFilterMode || (!colorFilterValue.color && !colorFilterValue.tagColor)) {
+    if (!colorFilterMode) {
+      setColorFilteredSymbols([]);
+      return;
+    }
+
+    if (colorFilterType === 'color' && !colorFilterValue.color && !colorFilterValue.tagColor) {
       setColorFilteredSymbols([]);
       return;
     }
@@ -310,7 +316,14 @@ export default function App() {
     async function loadFilteredSymbols() {
       setIsLoadingColorFilter(true);
       try {
-        const syms = await api.getSymbolsByColor(colorFilterValue.color, colorFilterValue.tagColor);
+        let syms: ColorFilteredSymbol[];
+        if (colorFilterType === 'alerts') {
+          syms = await api.getSymbolsWithAlerts();
+        } else if (colorFilterType === 'positions') {
+          syms = await api.getSymbolsWithPositions();
+        } else {
+          syms = await api.getSymbolsByColor(colorFilterValue.color, colorFilterValue.tagColor);
+        }
         if (!cancelled) {
           setColorFilteredSymbols(syms);
         }
@@ -327,10 +340,14 @@ export default function App() {
     }
     loadFilteredSymbols();
     return () => { cancelled = true; };
-  }, [colorFilterMode, colorFilterValue]);
+  }, [colorFilterMode, colorFilterValue, colorFilterType]);
 
   const handleColorFilterChange = useCallback((color: string | null, tagColor: string | null) => {
     setColorFilterValue({ color, tagColor });
+  }, []);
+
+  const handleColorFilterTypeChange = useCallback((type: 'color' | 'alerts' | 'positions') => {
+    setColorFilterType(type);
   }, []);
 
   const handleSelectSymbol = useCallback(
@@ -565,7 +582,9 @@ export default function App() {
             onSortModeChange={setSortMode}
             colorFilterMode={colorFilterMode}
             colorFilterValue={colorFilterValue}
+            colorFilterType={colorFilterType}
             onColorFilterChange={handleColorFilterChange}
+            onColorFilterTypeChange={handleColorFilterTypeChange}
             colorFilteredSymbols={colorFilteredSymbols}
             isLoadingColorFilter={isLoadingColorFilter}
             onEnableColorFilterMode={() => setColorFilterMode(true)}
