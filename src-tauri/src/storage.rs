@@ -151,6 +151,27 @@ pub fn open_db() -> SqlResult<Connection> {
             created_ts    INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_long_positions_symbol ON long_positions(symbol);
+        
+        -- Chart notes
+        CREATE TABLE IF NOT EXISTS chart_notes (
+            id            TEXT    NOT NULL PRIMARY KEY,
+            symbol        TEXT    NOT NULL,
+            note_text     TEXT    NOT NULL,
+            anchor_time   INTEGER NOT NULL,
+            anchor_price  REAL    NOT NULL,
+            pos_x         REAL,
+            pos_y         REAL,
+            created_at    TEXT    NOT NULL,
+            created_ts    INTEGER NOT NULL,
+            updated_ts    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_chart_notes_symbol ON chart_notes(symbol);
+        
+        -- Note hashtags (unique list for autocomplete)
+        CREATE TABLE IF NOT EXISTS note_hashtags (
+            tag           TEXT    NOT NULL PRIMARY KEY,
+            created_ts    INTEGER NOT NULL
+        );
         ",
     )?;
     
@@ -1220,4 +1241,120 @@ pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSy
     }
     
     Ok(results)
+}
+
+// ─── Chart Notes (SQLite) ─────────────────────────────────────────────────────
+
+pub fn get_chart_notes_for_symbol(symbol: &str, conn: &Connection) -> SqlResult<Vec<crate::models::ChartNote>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, symbol, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at 
+         FROM chart_notes WHERE symbol = ?1 ORDER BY created_ts ASC"
+    )?;
+    let rows = stmt
+        .query_map(params![symbol], |row| {
+            Ok(crate::models::ChartNote {
+                id: row.get(0)?,
+                symbol: row.get(1)?,
+                note_text: row.get(2)?,
+                anchor_time: row.get(3)?,
+                anchor_price: row.get(4)?,
+                pos_x: row.get(5)?,
+                pos_y: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn add_chart_note(
+    symbol: &str,
+    note_text: &str,
+    anchor_time: i64,
+    anchor_price: f64,
+    conn: &Connection,
+) -> SqlResult<String> {
+    let id = format!("note_{}_{}", symbol, Utc::now().timestamp_millis());
+    let created_at = ts_to_rfc3339(Utc::now().timestamp());
+    let created_ts = Utc::now().timestamp();
+
+    conn.execute(
+        "INSERT INTO chart_notes (id, symbol, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at, created_ts, updated_ts) 
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6, ?7, ?7)",
+        params![id, symbol, note_text, anchor_time, anchor_price, created_at, created_ts],
+    )?;
+    
+    extract_and_save_hashtags(note_text, conn)?;
+    
+    Ok(id)
+}
+
+pub fn update_chart_note(
+    id: &str,
+    note_text: &str,
+    pos_x: Option<f64>,
+    pos_y: Option<f64>,
+    conn: &Connection,
+) -> SqlResult<()> {
+    let updated_ts = Utc::now().timestamp();
+    
+    if let (Some(x), Some(y)) = (pos_x, pos_y) {
+        conn.execute(
+            "UPDATE chart_notes SET note_text = ?1, pos_x = ?2, pos_y = ?3, updated_ts = ?4 WHERE id = ?5",
+            params![note_text, x, y, updated_ts, id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE chart_notes SET note_text = ?1, updated_ts = ?2 WHERE id = ?3",
+            params![note_text, updated_ts, id],
+        )?;
+    }
+    
+    extract_and_save_hashtags(note_text, conn)?;
+    
+    Ok(())
+}
+
+pub fn update_chart_note_position(
+    id: &str,
+    pos_x: f64,
+    pos_y: f64,
+    conn: &Connection,
+) -> SqlResult<()> {
+    let updated_ts = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE chart_notes SET pos_x = ?1, pos_y = ?2, updated_ts = ?3 WHERE id = ?4",
+        params![pos_x, pos_y, updated_ts, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_chart_note(id: &str, conn: &Connection) -> SqlResult<()> {
+    conn.execute("DELETE FROM chart_notes WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+fn extract_and_save_hashtags(note_text: &str, conn: &Connection) -> SqlResult<()> {
+    let re = regex::Regex::new(r"#(\w+)").unwrap();
+    let now = Utc::now().timestamp();
+    
+    for cap in re.captures_iter(note_text) {
+        let tag = cap[1].to_lowercase();
+        conn.execute(
+            "INSERT OR IGNORE INTO note_hashtags (tag, created_ts) VALUES (?1, ?2)",
+            params![tag, now],
+        )?;
+    }
+    
+    Ok(())
+}
+
+pub fn get_all_hashtags(conn: &Connection) -> SqlResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT tag FROM note_hashtags ORDER BY tag ASC")?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }

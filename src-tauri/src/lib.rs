@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, ColorFilteredSymbol, FetchSettings, LastSelection, LongPosition, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
+use models::{ChartDataResponse, ChartNote, ColorFilteredSymbol, FetchSettings, LastSelection, LongPosition, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -294,6 +294,56 @@ fn delete_long_position(id: String) -> Result<(), String> {
     storage::delete_long_position(&id, &conn).map_err(|e| e.to_string())
 }
 
+// ─── Chart Notes ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_chart_notes(symbol: String) -> Result<Vec<ChartNote>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::get_chart_notes_for_symbol(&symbol, &conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_chart_note(
+    symbol: String,
+    note_text: String,
+    anchor_time: i64,
+    anchor_price: f64,
+) -> Result<String, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::add_chart_note(&symbol, &note_text, anchor_time, anchor_price, &conn)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_chart_note(
+    id: String,
+    note_text: String,
+    pos_x: Option<f64>,
+    pos_y: Option<f64>,
+) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::update_chart_note(&id, &note_text, pos_x, pos_y, &conn)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_chart_note_position(id: String, pos_x: f64, pos_y: f64) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::update_chart_note_position(&id, pos_x, pos_y, &conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_chart_note(id: String) -> Result<(), String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::delete_chart_note(&id, &conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_all_hashtags() -> Result<Vec<String>, String> {
+    let conn = storage::open_db().map_err(|e| e.to_string())?;
+    storage::get_all_hashtags(&conn).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn check_price_alerts() -> Result<(), String> {
     let watchlist_name = "PriceAlerts";
@@ -423,6 +473,13 @@ pub fn run() {
             get_long_positions,
             update_long_position,
             delete_long_position,
+            get_chart_notes,
+            add_chart_note,
+            update_chart_note,
+            update_chart_note_position,
+            delete_chart_note,
+            get_all_hashtags,
+            get_news,
             lookup_instrument_keys,
         ])
         .run(tauri::generate_context!())

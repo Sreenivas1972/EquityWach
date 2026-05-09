@@ -150,3 +150,33 @@ pub struct ColorFilteredSymbol {
     pub color: Option<String>,
     pub tag_color: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsArticle {
+    pub heading: String,
+    pub summary: String,
+    pub thumbnail: Option<String>,
+    pub article_link: String,
+    pub published_time: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsResponse {
+    pub data: std::collections::HashMap<String, Vec<NewsArticle>>,
+    pub page_number: i32,
+    pub page_size: i32,
+    pub total_records: i32,
+    pub total_pages: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChartNote {
+    pub id: String,
+    pub symbol: String,
+    pub note_text: String,
+    pub anchor_time: i64,
+    pub anchor_price: f64,
+    pub pos_x: Option<f64>,
+    pub pos_y: Option<f64>,
+    pub created_at: String,
+}
