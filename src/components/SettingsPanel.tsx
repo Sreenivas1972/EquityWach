@@ -45,10 +45,10 @@ export default function SettingsPanel({ onClose }: Props) {
 
   // ── Collapsible sections state ────────────────────────────────────────────
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
-    auth: false,
-    retention: false,
-    fetchRange: false,
-    watchlists: false,
+    auth: true,
+    retention: true,
+    fetchRange: true,
+    watchlists: true,
   });
 
   function toggleSection(section: string) {
