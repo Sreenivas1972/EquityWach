@@ -113,3 +113,14 @@ export interface NewsResponse {
   total_records: number;
   total_pages: number;
 }
+
+export interface ChartNote {
+  id: string;
+  symbol: string;
+  note_text: string;
+  anchor_time: number;
+  anchor_price: number;
+  pos_x: number | null;
+  pos_y: number | null;
+  created_at: string;
+}

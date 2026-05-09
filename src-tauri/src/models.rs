@@ -174,3 +174,15 @@ pub struct NewsResponse {
     pub total_records: i32,
     pub total_pages: i32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChartNote {
+    pub id: String,
+    pub symbol: String,
+    pub note_text: String,
+    pub anchor_time: i64,
+    pub anchor_price: f64,
+    pub pos_x: Option<f64>,
+    pub pos_y: Option<f64>,
+    pub created_at: String,
+}

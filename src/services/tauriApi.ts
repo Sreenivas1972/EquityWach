@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AuthStatus,
   ChartDataResponse,
+  ChartNote,
   ColorFilteredSymbol,
   FetchSettings,
   LastSelection,
@@ -177,4 +178,38 @@ export const api = {
 
   lookupInstrumentKeys: (symbols: Array<[string, string]>) =>
     invoke<Array<[string, string | null]>>("lookup_instrument_keys", { symbols }),
+
+  // ── Chart Notes ───────────────────────────────────────────────────────────
+  getChartNotes: (symbol: string) =>
+    invoke<ChartNote[]>("get_chart_notes", { symbol }),
+
+  addChartNote: (
+    symbol: string,
+    noteText: string,
+    anchorTime: number,
+    anchorPrice: number
+  ) =>
+    invoke<string>("add_chart_note", {
+      symbol,
+      noteText,
+      anchorTime,
+      anchorPrice,
+    }),
+
+  updateChartNote: (
+    id: string,
+    noteText: string,
+    posX: number | null,
+    posY: number | null
+  ) =>
+    invoke<void>("update_chart_note", { id, noteText, posX, posY }),
+
+  updateChartNotePosition: (id: string, posX: number, posY: number) =>
+    invoke<void>("update_chart_note_position", { id, posX, posY }),
+
+  deleteChartNote: (id: string) =>
+    invoke<void>("delete_chart_note", { id }),
+
+  getAllHashtags: () =>
+    invoke<string[]>("get_all_hashtags"),
 };
