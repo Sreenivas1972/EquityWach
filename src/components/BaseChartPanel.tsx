@@ -631,25 +631,21 @@ function BaseChartPanelComponent({
     }
   }, []);
 
-  const handleDragLine = useCallback(async (id: string, type: 'sl' | 'target', newPrice: number) => {
-    const position = longPositions.find(p => p.id === id);
-    if (!position) return;
-    
-    const updatedSl = type === 'sl' ? newPrice : position.sl_price;
-    const updatedTarget = type === 'target' ? newPrice : position.target_price;
-    
+  const handleDragPreview = useCallback((id: string, type: 'sl' | 'target', newPrice: number) => {
     setLongPositions(prev => prev.map(p => 
       p.id === id 
-        ? { ...p, sl_price: updatedSl, target_price: updatedTarget }
+        ? { ...p, [type === 'sl' ? 'sl_price' : 'target_price']: newPrice }
         : p
     ));
-    
+  }, []);
+
+  const handleDragCommit = useCallback(async (id: string, slPrice: number, targetPrice: number) => {
     try {
-      await api.updateLongPosition(id, updatedSl, updatedTarget);
+      await api.updateLongPosition(id, slPrice, targetPrice);
     } catch (e) {
       console.error('Failed to update position:', e);
     }
-  }, [longPositions]);
+  }, []);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
@@ -778,18 +774,26 @@ function BaseChartPanelComponent({
                       }}
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        const startY = e.clientY;
-                        const startPrice = position.sl_price;
+                        e.stopPropagation();
+                        const container = containerRef.current;
+                        if (!container || !seriesRef.current) return;
                         
                         const handleMouseMove = (moveEvent: MouseEvent) => {
-                          const deltaY = moveEvent.clientY - startY;
-                          const priceDelta = -deltaY * 0.1;
-                          handleDragLine(position.id, 'sl', startPrice + priceDelta);
+                          const rect = container.getBoundingClientRect();
+                          const y = moveEvent.clientY - rect.top;
+                          const price = seriesRef.current?.coordinateToPrice(y);
+                          if (price !== null && price !== undefined) {
+                            handleDragPreview(position.id, 'sl', price);
+                          }
                         };
                         
                         const handleMouseUp = () => {
                           window.removeEventListener('mousemove', handleMouseMove);
                           window.removeEventListener('mouseup', handleMouseUp);
+                          const pos = longPositions.find(p => p.id === position.id);
+                          if (pos) {
+                            handleDragCommit(position.id, pos.sl_price, pos.target_price);
+                          }
                         };
                         
                         window.addEventListener('mousemove', handleMouseMove);
@@ -828,18 +832,26 @@ function BaseChartPanelComponent({
                       }}
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        const startY = e.clientY;
-                        const startPrice = position.target_price;
+                        e.stopPropagation();
+                        const container = containerRef.current;
+                        if (!container || !seriesRef.current) return;
                         
                         const handleMouseMove = (moveEvent: MouseEvent) => {
-                          const deltaY = moveEvent.clientY - startY;
-                          const priceDelta = -deltaY * 0.1;
-                          handleDragLine(position.id, 'target', startPrice + priceDelta);
+                          const rect = container.getBoundingClientRect();
+                          const y = moveEvent.clientY - rect.top;
+                          const price = seriesRef.current?.coordinateToPrice(y);
+                          if (price !== null && price !== undefined) {
+                            handleDragPreview(position.id, 'target', price);
+                          }
                         };
                         
                         const handleMouseUp = () => {
                           window.removeEventListener('mousemove', handleMouseMove);
                           window.removeEventListener('mouseup', handleMouseUp);
+                          const pos = longPositions.find(p => p.id === position.id);
+                          if (pos) {
+                            handleDragCommit(position.id, pos.sl_price, pos.target_price);
+                          }
                         };
                         
                         window.addEventListener('mousemove', handleMouseMove);
