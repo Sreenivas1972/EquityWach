@@ -50,3 +50,11 @@ pub fn search_symbol(symbol: &str) -> Result<Vec<crate::models::SymbolSearchResu
 pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
     storage::get_symbols_by_color(color, tag_color)
 }
+
+pub fn get_symbols_with_alerts() -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    storage::get_symbols_with_alerts()
+}
+
+pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    storage::get_symbols_with_positions()
+}

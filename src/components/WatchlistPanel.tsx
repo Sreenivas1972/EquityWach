@@ -5,6 +5,8 @@ import IntervalSelector from "./IntervalSelector";
 
 type DetachedWindowMode = "fib" | "ema" | "sr";
 
+type ColorFilterType = 'color' | 'alerts' | 'positions';
+
 interface Props {
   watchlists: WatchlistEntry[];
   selectedWatchlist: string | null;
@@ -26,7 +28,9 @@ interface Props {
   onSortModeChange: (mode: SortMode) => void;
   colorFilterMode: boolean;
   colorFilterValue: { color: string | null; tagColor: string | null };
+  colorFilterType: ColorFilterType;
   onColorFilterChange: (color: string | null, tagColor: string | null) => void;
+  onColorFilterTypeChange: (type: ColorFilterType) => void;
   colorFilteredSymbols: ColorFilteredSymbol[];
   isLoadingColorFilter: boolean;
   onEnableColorFilterMode: () => void;
@@ -58,7 +62,9 @@ export default function WatchlistPanel({
   onSortModeChange,
   colorFilterMode,
   colorFilterValue,
+  colorFilterType,
   onColorFilterChange,
+  onColorFilterTypeChange,
   colorFilteredSymbols,
   isLoadingColorFilter,
   onEnableColorFilterMode,
@@ -271,30 +277,57 @@ export default function WatchlistPanel({
 
               {colorFilterMode && (
                 <div className="color-filter-controls">
-                  <select
-                    className="color-filter-select"
-                    value={colorFilterValue.color ?? ""}
-                    onChange={(e) => onColorFilterChange(e.target.value || null, colorFilterValue.tagColor)}
-                  >
-                    <option value="">Status: All</option>
-                    {statusColorOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="color-filter-select"
-                    value={colorFilterValue.tagColor ?? ""}
-                    onChange={(e) => onColorFilterChange(colorFilterValue.color, e.target.value || null)}
-                  >
-                    <option value="">Tag: All</option>
-                    {tagColorOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="color-filter-type-buttons">
+                    <button
+                      type="button"
+                      className={`color-filter-type-btn${colorFilterType === 'color' ? ' color-filter-type-btn--active' : ''}`}
+                      onClick={() => onColorFilterTypeChange('color')}
+                    >
+                      🎨 
+                    </button>
+                    <button
+                      type="button"
+                      className={`color-filter-type-btn${colorFilterType === 'alerts' ? ' color-filter-type-btn--active' : ''}`}
+                      onClick={() => onColorFilterTypeChange('alerts')}
+                    >
+                      🔔
+                    </button>
+                    <button
+                      type="button"
+                      className={`color-filter-type-btn${colorFilterType === 'positions' ? ' color-filter-type-btn--active' : ''}`}
+                      onClick={() => onColorFilterTypeChange('positions')}
+                    >
+                      📈
+                    </button>
+                  </div>
+                  {colorFilterType === 'color' && (
+                    <>
+                      <select
+                        className="color-filter-select"
+                        value={colorFilterValue.color ?? ""}
+                        onChange={(e) => onColorFilterChange(e.target.value || null, colorFilterValue.tagColor)}
+                      >
+                        <option value="">Clr:All</option>
+                        {statusColorOptions.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="color-filter-select"
+                        value={colorFilterValue.tagColor ?? ""}
+                        onChange={(e) => onColorFilterChange(colorFilterValue.color, e.target.value || null)}
+                      >
+                        <option value="">Tag:All</option>
+                        {tagColorOptions.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                 </div>
               )}
             </>
@@ -342,8 +375,12 @@ export default function WatchlistPanel({
             {!isLoadingSymbols && !colorFilterMode && selectedWatchlist && symbols.length === 0 && (
               <div className="symbol-list-empty">No symbols found in file.</div>
             )}
-            {!isLoadingColorFilter && colorFilterMode && colorFilteredSymbols.length === 0 && (colorFilterValue.color || colorFilterValue.tagColor) && (
-              <div className="symbol-list-empty">No symbols match the filter.</div>
+            {!isLoadingColorFilter && colorFilterMode && colorFilteredSymbols.length === 0 && (colorFilterType !== 'color' || colorFilterValue.color || colorFilterValue.tagColor) && (
+              <div className="symbol-list-empty">
+                {colorFilterType === 'alerts' && 'No symbols with price alerts.'}
+                {colorFilterType === 'positions' && 'No symbols with long positions.'}
+                {colorFilterType === 'color' && 'No symbols match the filter.'}
+              </div>
             )}
             {colorFilterMode ? (
               colorFilteredSymbols.map((sym) => (

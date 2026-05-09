@@ -1235,3 +1235,63 @@ pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Res
     
     Ok(results)
 }
+
+pub fn get_symbols_with_alerts() -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT pa.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+         FROM price_alerts pa 
+         LEFT JOIN watchlist_symbols ws ON pa.symbol = ws.symbol 
+         LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         ORDER BY pa.symbol"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(crate::models::ColorFilteredSymbol {
+            symbol: row.get(0)?,
+            watchlist_name: row.get(1)?,
+            color: row.get(2)?,
+            tag_color: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut results: Vec<crate::models::ColorFilteredSymbol> = Vec::new();
+    for row in rows {
+        if let Ok(s) = row {
+            results.push(s);
+        }
+    }
+    
+    Ok(results)
+}
+
+pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT lp.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+         FROM long_positions lp 
+         LEFT JOIN watchlist_symbols ws ON lp.symbol = ws.symbol 
+         LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         ORDER BY lp.symbol"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map([], |row| {
+        Ok(crate::models::ColorFilteredSymbol {
+            symbol: row.get(0)?,
+            watchlist_name: row.get(1)?,
+            color: row.get(2)?,
+            tag_color: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut results: Vec<crate::models::ColorFilteredSymbol> = Vec::new();
+    for row in rows {
+        if let Ok(s) = row {
+            results.push(s);
+        }
+    }
+    
+    Ok(results)
+}
