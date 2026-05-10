@@ -149,7 +149,7 @@ const TOOLS: ToolDefinition[] = [
   { id: "callout", label: "Callout", anchors: 2, icon: <CalloutIcon /> },
   { id: "anchored-text", label: "Anchored Text", anchors: 2, icon: <AnchoredTextIcon /> },
   { id: "arrow", label: "Arrow", anchors: 2, icon: <ArrowIcon /> },
-  { id: "channel", label: "Channel", anchors: 4, icon: <ChannelIcon /> },
+  { id: "channel", label: "Channel", anchors: 3, icon: <ChannelIcon /> },
 ];
 
 export function DrawingToolbar({ 
