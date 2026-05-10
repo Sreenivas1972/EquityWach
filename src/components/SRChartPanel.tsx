@@ -5,6 +5,7 @@ import {
   createChart,
   LineSeries,
 } from "lightweight-charts";
+import { DrawingManager, ExtendedLine } from "lightweight-charts-drawing";
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
 import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
@@ -16,7 +17,7 @@ type TrendlineAnchor = {
   price: number;
 };
 
-type DrawingType = "trendline" | "channel";
+type DrawingType = "trendline" | "channel" | "extended";
 
 type TrendlineDrawing = {
   id: string;
@@ -141,6 +142,8 @@ export default function SRChartPanel({
   > | null>(null);
   const manualTrendlineSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
   const previewLineRef = useRef<ReturnType<ReturnType<typeof createChart>["addSeries"]> | null>(null);
+  const drawingManagerRef = useRef<DrawingManager | null>(null);
+  const extendedLineIdsRef = useRef<Set<string>>(new Set());
 
   const [trendlineDrawings, setTrendlineDrawings] = useState<TrendlineDrawing[]>([]);
     const [showDrawings, setShowDrawings] = useState(false);
@@ -202,6 +205,10 @@ export default function SRChartPanel({
     chartRef.current = chart;
     seriesRef.current = series;
 
+    const manager = new DrawingManager();
+    manager.attach(chart, series, el);
+    drawingManagerRef.current = manager;
+
     const observer = new ResizeObserver(() => {
       if (!containerRef.current) return;
       chart.applyOptions({
@@ -213,6 +220,10 @@ export default function SRChartPanel({
 
     return () => {
       observer.disconnect();
+      if (drawingManagerRef.current) {
+        drawingManagerRef.current.detach();
+        drawingManagerRef.current = null;
+      }
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -270,19 +281,19 @@ export default function SRChartPanel({
 
       const clickedPoint: TrendlineAnchor = { time: clickedTime, price };
 
-      // Case 1: Drawing a new trendline or channel
+      // Case 1: Drawing a new trendline, extended line, or channel
       if (isDrawingMode) {
         if (!anchorA) {
           setAnchorA(clickedPoint);
           setPreviewLine(null);
         } else if (!anchorB) {
-          if (drawingType === "trendline") {
+          if (drawingType === "trendline" || drawingType === "extended") {
             const symbolValue = symbol;
             if (!symbolValue) return;
 
             const drawing: TrendlineDrawing = {
-              id: `trendline-${Date.now()}`,
-              type: "trendline",
+              id: `${drawingType}-${Date.now()}`,
+              type: drawingType,
               anchorA: anchorA!,
               anchorB: clickedPoint,
             };
@@ -404,10 +415,11 @@ export default function SRChartPanel({
     }
   }, [candles, interval]);
 
-  // ── Render trendline and channel drawings ────────────────────────────────
+  // ── Render trendline, extended, and channel drawings ────────────────────────────────
   useEffect(() => {
-    if (!chartRef.current || !seriesRef.current) return;
+    if (!chartRef.current || !seriesRef.current || !drawingManagerRef.current) return;
     const chart = chartRef.current;
+    const manager = drawingManagerRef.current;
 
     try {
       Object.values(manualTrendlineSeriesRef.current).forEach((series) => {
@@ -417,8 +429,20 @@ export default function SRChartPanel({
       });
       manualTrendlineSeriesRef.current = {};
 
+      extendedLineIdsRef.current.forEach(id => {
+        manager.removeDrawing(id);
+      });
+      extendedLineIdsRef.current = new Set();
+
       trendlineDrawings.forEach((drawing) => {
-        if (drawing.type === "channel" && drawing.anchorC && drawing.anchorD) {
+        if (drawing.type === "extended") {
+          const extendedLine = new ExtendedLine(drawing.id, [
+            { time: toChartTime(drawing.anchorA.time, interval) as any, price: drawing.anchorA.price },
+            { time: toChartTime(drawing.anchorB.time, interval) as any, price: drawing.anchorB.price },
+          ], { lineColor: "#2563eb", lineWidth: 2 });
+          manager.addDrawing(extendedLine);
+          extendedLineIdsRef.current.add(drawing.id);
+        } else if (drawing.type === "channel" && drawing.anchorC && drawing.anchorD) {
           const line1 = chart.addSeries(LineSeries, {
             color: "#2563eb",
             lineWidth: 2,
@@ -476,7 +500,7 @@ export default function SRChartPanel({
           manualTrendlineSeriesRef.current[`${drawing.id}-1`] = line1;
           manualTrendlineSeriesRef.current[`${drawing.id}-2`] = line2;
           manualTrendlineSeriesRef.current[`${drawing.id}-mid`] = midLine;
-        } else {
+        } else if (drawing.type === "trendline") {
           const line = chart.addSeries(LineSeries, {
             color: "#2563eb",
             lineWidth: 2,
@@ -625,6 +649,7 @@ export default function SRChartPanel({
                 style={{ marginRight: "8px" }}
               >
                 <option value="trendline">Trendline</option>
+                <option value="extended">Extended Line</option>
                 <option value="channel">Channel</option>
               </select>
               <button
@@ -660,10 +685,10 @@ export default function SRChartPanel({
             </button>
             {isDrawingMode && (
               <span className="sr-hint">
-                {drawingType === "trendline"
+                {drawingType === "trendline" || drawingType === "extended"
                   ? anchorA
-                    ? "Click the chart to place the second trendline anchor."
-                    : "Click the chart to place the first trendline anchor."
+                    ? "Click the chart to place the second anchor."
+                    : "Click the chart to place the first anchor."
                   : anchorA
                     ? "Click the chart to place the third point (determines channel width)."
                     : "Click the chart to place the first channel anchor."}
@@ -707,7 +732,7 @@ export default function SRChartPanel({
               {trendlineDrawings.map((drawing) => (
                 <div key={drawing.id} className="sr-drawing-item">
                   <span>
-                    {drawing.type === "channel" ? "Channel" : "Trendline"}: 
+                    {drawing.type === "channel" ? "Channel" : drawing.type === "extended" ? "Extended Line" : "Trendline"}: 
                     {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
                     {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
                     {drawing.type === "channel" && drawing.anchorC && drawing.anchorD && (
