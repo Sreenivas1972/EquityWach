@@ -179,6 +179,7 @@ pub struct NewsResponse {
 pub struct ChartNote {
     pub id: String,
     pub symbol: String,
+    pub panel_type: String,
     pub note_text: String,
     pub anchor_time: i64,
     pub anchor_price: f64,

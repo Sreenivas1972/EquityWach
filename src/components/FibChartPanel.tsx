@@ -9,6 +9,7 @@ import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
 import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
 import IntervalSelector from "./IntervalSelector";
+import ChartNotes from "./ChartNotes";
 
 type FibAnchor = {
   time: number;
@@ -686,7 +687,14 @@ export default function FibChartPanel({
         )}
 
         {/* Chart area */}
-        <div className="chart-canvas-container" ref={containerRef}>
+        <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+          <ChartNotes
+            symbol={symbol}
+            panelType="fib"
+            chartRef={chartRef}
+            seriesRef={seriesRef}
+            candles={candles}
+          />
           {isLoading && (
             <div className="chart-loading-overlay">
               <span className="spinner" />

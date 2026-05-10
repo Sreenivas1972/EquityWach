@@ -478,6 +478,8 @@ export default function App() {
   // Keyboard navigation: spacebar to next symbol
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      
       const currentSymbols = colorFilterMode 
         ? colorFilteredSymbols.map(s => ({ symbol: s.symbol, color: s.color, tag_color: s.tag_color }))
         : sortedSymbols;
@@ -503,6 +505,7 @@ export default function App() {
   // Keyboard shortcut: Cmd+M to open watchlist picker
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       if ((event.metaKey || event.ctrlKey) && event.key === 'm') {
         event.preventDefault();
         if (selectedSymbol && watchlists.length > 0) {

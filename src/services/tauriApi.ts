@@ -180,17 +180,19 @@ export const api = {
     invoke<Array<[string, string | null]>>("lookup_instrument_keys", { symbols }),
 
   // ── Chart Notes ───────────────────────────────────────────────────────────
-  getChartNotes: (symbol: string) =>
-    invoke<ChartNote[]>("get_chart_notes", { symbol }),
+  getChartNotes: (symbol: string, panelType: string) =>
+    invoke<ChartNote[]>("get_chart_notes", { symbol, panelType }),
 
   addChartNote: (
     symbol: string,
+    panelType: string,
     noteText: string,
     anchorTime: number,
     anchorPrice: number
   ) =>
     invoke<string>("add_chart_note", {
       symbol,
+      panelType,
       noteText,
       anchorTime,
       anchorPrice,
