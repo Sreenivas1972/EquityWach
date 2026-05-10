@@ -33,13 +33,25 @@ export default function ChartNotes({
   const crosshairTimeRef = useRef<number | null>(null);
   const pendingNoteAnchorRef = useRef<{ anchorTime: number; anchorPrice: number } | null>(null);
   const dragPosRef = useRef<{ noteId: string; startX: number; startY: number; noteX: number; noteY: number } | null>(null);
+  const currentSymbolRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!symbol) {
       setNotes([]);
+      currentSymbolRef.current = null;
       return;
     }
-    api.getChartNotes(symbol, panelType).then(setNotes).catch(() => {});
+    currentSymbolRef.current = symbol;
+    setNotes([]);
+    api.getChartNotes(symbol, panelType).then((loadedNotes) => {
+      if (currentSymbolRef.current === symbol) {
+        setNotes(loadedNotes);
+      }
+    }).catch(() => {
+      if (currentSymbolRef.current === symbol) {
+        setNotes([]);
+      }
+    });
   }, [symbol, panelType]);
 
   useEffect(() => {
@@ -53,7 +65,7 @@ export default function ChartNotes({
     const handleCrosshairMove = (param: any) => {
       if (!param.point || !seriesRef.current) return;
       const price = seriesRef.current.coordinateToPrice(param.point.y);
-      if (price !== null && price !== undefined && !Number.isNaN(price)) {
+      if (price !== null && price !== undefined && !Number.isNaN(price) && isFinite(price)) {
         crosshairPriceRef.current = price as number;
       }
       if (param.time) {
@@ -76,14 +88,15 @@ export default function ChartNotes({
         
         const crosshairPrice = crosshairPriceRef.current;
         const crosshairTime = crosshairTimeRef.current;
+        const lastCandle = candles[candles.length - 1];
         
-        const anchorPrice = crosshairPrice !== null && crosshairPrice !== undefined 
+        const anchorPrice = (crosshairPrice !== null && crosshairPrice !== undefined && isFinite(crosshairPrice))
           ? crosshairPrice 
-          : candles[candles.length - 1].close;
+          : lastCandle.close;
         
-        const anchorTime = crosshairTime !== null && crosshairTimeRef.current !== undefined
+        const anchorTime = crosshairTime !== null && crosshairTime !== undefined && isFinite(crosshairTime)
           ? crosshairTime
-          : candles[candles.length - 1].time;
+          : lastCandle.time;
         
         pendingNoteAnchorRef.current = { anchorTime, anchorPrice };
         
@@ -108,8 +121,15 @@ export default function ChartNotes({
         ));
       } else {
         const pending = pendingNoteAnchorRef.current;
-        const anchorPrice = pending?.anchorPrice ?? candles[candles.length - 1].close;
-        const anchorTime = pending?.anchorTime ?? candles[candles.length - 1].time;
+        const lastCandle = candles[candles.length - 1];
+        
+        const anchorPrice = (pending?.anchorPrice !== undefined && isFinite(pending.anchorPrice))
+          ? pending.anchorPrice 
+          : lastCandle.close;
+        
+        const anchorTime = (pending?.anchorTime !== undefined && isFinite(pending.anchorTime))
+          ? pending.anchorTime 
+          : lastCandle.time;
         
         const id = await api.addChartNote(symbol, panelType, noteText, anchorTime, anchorPrice);
         const newNote: ChartNote = {
@@ -207,13 +227,69 @@ export default function ChartNotes({
     }, 0);
   }, [noteText, currentHashtagStart, hashtagCaretPos]);
 
-  if (notes.length === 0 && !showNoteModal) {
+  const [notePositions, setNotePositions] = useState<{ id: string; anchorX: number; anchorY: number; noteX: number; noteY: number }[]>([]);
+
+  const calculateNotePositions = useCallback(() => {
+    if (notes.length === 0 || candles.length === 0) {
+      setNotePositions([]);
+      return;
+    }
+
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    
+    if (!chart || !series) {
+      setNotePositions([]);
+      return;
+    }
+
+    const timeScale = chart.timeScale();
+    
+    const positions: { id: string; anchorX: number; anchorY: number; noteX: number; noteY: number }[] = [];
+    
+    notes.forEach((note) => {
+      const anchorX = timeScale.timeToCoordinate(note.anchor_time as UTCTimestamp);
+      const anchorY = series.priceToCoordinate(note.anchor_price);
+      
+      if (anchorX === null || anchorY === null || anchorY === undefined || 
+          !isFinite(anchorX) || !isFinite(anchorY)) return;
+      
+      const noteX = note.pos_x !== null && note.pos_x !== undefined ? note.pos_x : anchorX + 20;
+      const noteY = note.pos_y !== null && note.pos_y !== undefined ? note.pos_y : anchorY - 20;
+      
+      positions.push({ id: note.id, anchorX, anchorY, noteX, noteY });
+    });
+    
+    setNotePositions(positions);
+  }, [notes, candles, chartRef, seriesRef]);
+
+  useEffect(() => {
+    const rafId = requestAnimationFrame(calculateNotePositions);
+    return () => cancelAnimationFrame(rafId);
+  }, [calculateNotePositions]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const timeScale = chart.timeScale();
+    const handleVisibleChange = () => {
+      requestAnimationFrame(calculateNotePositions);
+    };
+
+    timeScale.subscribeVisibleTimeRangeChange(handleVisibleChange);
+    return () => {
+      timeScale.unsubscribeVisibleTimeRangeChange(handleVisibleChange);
+    };
+  }, [calculateNotePositions]);
+
+  if (notePositions.length === 0 && !showNoteModal) {
     return null;
   }
 
   return (
     <>
-      {notes.length > 0 && (
+      {notePositions.length > 0 && (
         <div className="notes-overlay" style={{
           position: "absolute",
           left: 0,
@@ -223,26 +299,50 @@ export default function ChartNotes({
           pointerEvents: "none",
           zIndex: 12,
         }}>
-          {notes.map((note) => {
-            const chart = chartRef.current;
-            if (!chart) return null;
-            
-            const timeScale = chart.timeScale();
-            const coordinate = timeScale.timeToCoordinate(note.anchor_time as UTCTimestamp);
-            const priceY = seriesRef.current?.priceToCoordinate(note.anchor_price);
-            
-            if (coordinate === null || priceY === null || priceY === undefined) return null;
-            
-            const noteX = note.pos_x !== null ? note.pos_x : coordinate + 20;
-            const noteY = note.pos_y !== null ? note.pos_y : priceY - 20;
+          <svg style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+            {notePositions.map((pos) => {
+              const note = notes.find(n => n.id === pos.id);
+              if (!note) return null;
+              
+              const noteWidth = 120;
+              const noteHeight = 60;
+              const connectorX = pos.noteX < pos.anchorX ? pos.noteX + noteWidth : pos.noteX;
+              const connectorY = pos.noteY + noteHeight / 2;
+              
+              return (
+                <g key={pos.id}>
+                  <line
+                    x1={pos.anchorX}
+                    y1={pos.anchorY}
+                    x2={connectorX}
+                    y2={connectorY}
+                    stroke="rgba(59, 130, 246, 0.7)"
+                    strokeWidth={2}
+                    strokeDasharray="4,2"
+                  />
+                  <circle
+                    cx={pos.anchorX}
+                    cy={pos.anchorY}
+                    r={5}
+                    fill="rgba(59, 130, 246, 0.9)"
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+          {notePositions.map((pos) => {
+            const note = notes.find(n => n.id === pos.id);
+            if (!note) return null;
             
             return (
               <div
                 key={note.id}
                 style={{
                   position: "absolute",
-                  left: noteX,
-                  top: noteY,
+                  left: pos.noteX,
+                  top: pos.noteY,
                   pointerEvents: "auto",
                   cursor: "move",
                   maxWidth: 250,
@@ -254,8 +354,8 @@ export default function ChartNotes({
                   
                   const startX = e.clientX;
                   const startY = e.clientY;
-                  const startNoteX = noteX;
-                  const startNoteY = noteY;
+                  const startNoteX = pos.noteX;
+                  const startNoteY = pos.noteY;
                   
                   dragPosRef.current = { noteId: note.id, startX, startY, noteX: startNoteX, noteY: startNoteY };
                   
@@ -269,6 +369,9 @@ export default function ChartNotes({
                     dragPosRef.current.noteX = newX;
                     dragPosRef.current.noteY = newY;
                     
+                    setNotePositions(prev => prev.map(p => 
+                      p.id === note.id ? { ...p, noteX: newX, noteY: newY } : p
+                    ));
                     setNotes(prev => prev.map(n => 
                       n.id === note.id ? { ...n, pos_x: newX, pos_y: newY } : n
                     ));
