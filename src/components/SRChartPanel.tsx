@@ -18,6 +18,7 @@ import {
   Callout,
   AnchoredText,
   Arrow,
+  ParallelChannel,
 } from "lightweight-charts-drawing";
 import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
@@ -381,74 +382,90 @@ export default function SRChartPanel({
       drawingIdsRef.current = new Set();
 
       drawings.forEach((drawing) => {
-        const anchors = drawing.anchors.map(a => ({
-          time: toChartTime(a.time, interval) as any,
-          price: a.price,
-        }));
+        try {
+          let anchors = drawing.anchors.map(a => ({
+            time: toChartTime(a.time, interval) as any,
+            price: a.price,
+          }));
 
-        const drawingStyle = drawing.style || DEFAULT_STYLE;
-        const lineDash = lineStyleToDash(drawingStyle.lineStyle);
-        const style: any = {
-          lineColor: drawingStyle.lineColor,
-          lineWidth: drawingStyle.lineWidth,
-        };
-        if (lineDash) {
-          style.lineDash = lineDash;
-        }
+          // Only sort by time for drawings that need chronological order
+          // Other drawings have semantic anchor positions (e.g., ParallelChannel: start, end, width)
+          const needsTimeSorting = [
+            "trendline",
+            "extended", 
+            "ray",
+            "price-range",
+            "rectangle",
+            "arrow",
+          ].includes(drawing.type);
 
-        let drawingInstance: any = null;
+          if (needsTimeSorting) {
+            anchors = anchors.sort((a, b) => {
+              const timeA = typeof a.time === 'number' ? a.time : new Date(a.time).getTime();
+              const timeB = typeof b.time === 'number' ? b.time : new Date(b.time).getTime();
+              return timeA - timeB;
+            });
+          }
 
-        switch (drawing.type) {
-          case "trendline":
-            drawingInstance = new TrendLine(drawing.id, anchors, style);
-            break;
-          case "extended":
-            drawingInstance = new ExtendedLine(drawing.id, anchors, style);
-            break;
-          case "ray":
-            drawingInstance = new Ray(drawing.id, anchors, style);
-            break;
-          case "vertical-line":
-            drawingInstance = new VerticalLine(drawing.id, anchors, style);
-            break;
-          case "andrews-pitchfork":
-            drawingInstance = new AndrewsPitchfork(drawing.id, anchors, style);
-            break;
-          case "price-range":
-            drawingInstance = new PriceRange(drawing.id, anchors, style);
-            break;
-          case "rectangle":
-            drawingInstance = new Rectangle(drawing.id, anchors, style);
-            break;
-          case "circle":
-            drawingInstance = new Circle(drawing.id, anchors, style);
-            break;
-          case "callout":
-            drawingInstance = new Callout(drawing.id, anchors, style, { text: drawing.text || "Note" });
-            break;
-          case "anchored-text":
-            drawingInstance = new AnchoredText(drawing.id, anchors, style, { text: drawing.text || "Text" });
-            break;
-          case "arrow":
-            drawingInstance = new Arrow(drawing.id, anchors, style);
-            break;
-          case "channel":
-            if (anchors.length >= 4) {
-              const line1Anchors = [anchors[0], anchors[1]];
-              const line2Anchors = [anchors[2], anchors[3]];
-              const tl1 = new TrendLine(`${drawing.id}-1`, line1Anchors, style);
-              const tl2 = new TrendLine(`${drawing.id}-2`, line2Anchors, style);
-              manager.addDrawing(tl1);
-              manager.addDrawing(tl2);
-              drawingIdsRef.current.add(`${drawing.id}-1`);
-              drawingIdsRef.current.add(`${drawing.id}-2`);
-            }
-            return;
-        }
+          const drawingStyle = drawing.style || DEFAULT_STYLE;
+          const lineDash = lineStyleToDash(drawingStyle.lineStyle);
+          const style: any = {
+            lineColor: drawingStyle.lineColor,
+            lineWidth: drawingStyle.lineWidth,
+          };
+          if (lineDash) {
+            style.lineDash = lineDash;
+          }
 
-        if (drawingInstance) {
-          manager.addDrawing(drawingInstance);
-          drawingIdsRef.current.add(drawing.id);
+          let drawingInstance: any = null;
+
+          switch (drawing.type) {
+            case "trendline":
+              drawingInstance = new TrendLine(drawing.id, anchors, style);
+              break;
+            case "extended":
+              drawingInstance = new ExtendedLine(drawing.id, anchors, style);
+              break;
+            case "ray":
+              drawingInstance = new Ray(drawing.id, anchors, style);
+              break;
+            case "vertical-line":
+              drawingInstance = new VerticalLine(drawing.id, anchors, style);
+              break;
+            case "andrews-pitchfork":
+              drawingInstance = new AndrewsPitchfork(drawing.id, anchors, style);
+              break;
+            case "price-range":
+              drawingInstance = new PriceRange(drawing.id, anchors, style);
+              break;
+            case "rectangle":
+              drawingInstance = new Rectangle(drawing.id, anchors, style);
+              break;
+            case "circle":
+              drawingInstance = new Circle(drawing.id, anchors, style);
+              break;
+            case "callout":
+              drawingInstance = new Callout(drawing.id, anchors, style, { text: drawing.text || "Note" });
+              break;
+            case "anchored-text":
+              drawingInstance = new AnchoredText(drawing.id, anchors, style, { text: drawing.text || "Text" });
+              break;
+            case "arrow":
+              drawingInstance = new Arrow(drawing.id, anchors, style);
+              break;
+            case "channel":
+              if (anchors.length >= 3) {
+                drawingInstance = new ParallelChannel(drawing.id, anchors, style);
+              }
+              break;
+          }
+
+          if (drawingInstance) {
+            manager.addDrawing(drawingInstance);
+            drawingIdsRef.current.add(drawing.id);
+          }
+        } catch (drawingErr) {
+          console.error(`Error rendering drawing ${drawing.id}:`, drawingErr);
         }
       });
     } catch (err) {
@@ -463,11 +480,29 @@ export default function SRChartPanel({
     if (!chart || !series) return;
 
     if (previewLineRef.current) {
-      chart.removeSeries(previewLineRef.current);
+      try {
+        chart.removeSeries(previewLineRef.current);
+      } catch (e) {
+        console.warn("Error removing preview line:", e);
+      }
       previewLineRef.current = null;
     }
 
-    if (previewLine && previewLine.length >= 1) {
+    if (!previewLine || previewLine.length < 2 || !selectedTool) return;
+
+    // Only show preview line for tools that need chronological order
+    const needsPreviewLine = [
+      "trendline",
+      "extended",
+      "ray",
+      "price-range",
+      "rectangle",
+      "arrow",
+    ].includes(selectedTool);
+
+    if (!needsPreviewLine) return;
+
+    try {
       const line = chart.addSeries(LineSeries, {
         color: "#94a3b8",
         lineWidth: 2,
@@ -479,15 +514,23 @@ export default function SRChartPanel({
         }),
       });
 
-      const data = previewLine.map(a => ({
-        time: toChartTime(a.time, interval),
-        value: a.price,
-      }));
+      const data = previewLine
+        .map(a => ({
+          time: toChartTime(a.time, interval),
+          value: a.price,
+        }))
+        .sort((a, b) => {
+          const timeA = typeof a.time === 'number' ? a.time : new Date(a.time as string).getTime();
+          const timeB = typeof b.time === 'number' ? b.time : new Date(b.time as string).getTime();
+          return timeA - timeB;
+        });
 
       line.setData(data as any);
       previewLineRef.current = line;
+    } catch (e) {
+      console.error("Error rendering preview line:", e);
     }
-  }, [previewLine, interval]);
+  }, [previewLine, interval, selectedTool]);
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
