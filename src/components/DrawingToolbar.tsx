@@ -14,6 +14,28 @@ export type DrawingToolType =
   | "arrow"
   | "channel";
 
+export interface DrawingStyleSettings {
+  lineColor: string;
+  lineWidth: number;
+  lineStyle: number;
+  fillColor?: string;
+}
+
+export const DEFAULT_STYLE: DrawingStyleSettings = {
+  lineColor: "#2563eb",
+  lineWidth: 2,
+  lineStyle: 0,
+};
+
+export function lineStyleToDash(style: number): number[] | undefined {
+  switch (style) {
+    case 1: return [2, 2];
+    case 2: return [5, 5];
+    case 3: return [10, 5];
+    default: return undefined;
+  }
+}
+
 interface DrawingToolbarProps {
   selectedTool: DrawingToolType | null;
   onToolSelect: (tool: DrawingToolType | null) => void;
@@ -21,6 +43,8 @@ interface DrawingToolbarProps {
   onDeleteSelected: () => void;
   drawingText: string;
   onDrawingTextChange: (text: string) => void;
+  styleSettings: DrawingStyleSettings;
+  onStyleSettingsChange: (settings: DrawingStyleSettings) => void;
 }
 
 interface ToolDefinition {
@@ -128,10 +152,20 @@ const TOOLS: ToolDefinition[] = [
   { id: "channel", label: "Channel", anchors: 4, icon: <ChannelIcon /> },
 ];
 
-export function DrawingToolbar({ selectedTool, onToolSelect, onClearDrawings, onDeleteSelected, drawingText, onDrawingTextChange }: DrawingToolbarProps) {
+export function DrawingToolbar({ 
+  selectedTool, 
+  onToolSelect, 
+  onClearDrawings, 
+  onDeleteSelected, 
+  drawingText, 
+  onDrawingTextChange,
+  styleSettings,
+  onStyleSettingsChange,
+}: DrawingToolbarProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 20, y: 100 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showSettings, setShowSettings] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -294,6 +328,131 @@ export function DrawingToolbar({ selectedTool, onToolSelect, onClearDrawings, on
               }}
               autoFocus
             />
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          style={{
+            width: "100%",
+            padding: "6px 8px",
+            background: showSettings ? "#3a3a3a" : "#1a1a1a",
+            border: "1px solid #444",
+            borderRadius: "4px",
+            color: "#fff",
+            fontSize: "11px",
+            cursor: "pointer",
+            marginBottom: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>Style Settings</span>
+          <span style={{ 
+            transform: showSettings ? "rotate(180deg)" : "rotate(0deg)", 
+            transition: "transform 0.2s",
+            fontSize: "10px" 
+          }}>▼</span>
+        </button>
+
+        {showSettings && (
+          <div style={{
+            background: "#1a1a1a",
+            padding: "8px",
+            borderRadius: "4px",
+            marginBottom: "8px",
+          }}>
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{ display: "block", color: "#999", fontSize: "10px", marginBottom: "4px" }}>Line Color</label>
+              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                <input
+                  type="color"
+                  value={styleSettings.lineColor}
+                  onChange={(e) => onStyleSettingsChange({ ...styleSettings, lineColor: e.target.value })}
+                  style={{
+                    width: "32px",
+                    height: "24px",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    background: "transparent",
+                  }}
+                />
+                <input
+                  type="text"
+                  value={styleSettings.lineColor}
+                  onChange={(e) => onStyleSettingsChange({ ...styleSettings, lineColor: e.target.value })}
+                  style={{
+                    flex: 1,
+                    padding: "4px 6px",
+                    background: "#2a2a2a",
+                    border: "1px solid #444",
+                    borderRadius: "4px",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontFamily: "monospace",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{ display: "block", color: "#999", fontSize: "10px", marginBottom: "4px" }}>
+                Line Width: {styleSettings.lineWidth}px
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="8"
+                value={styleSettings.lineWidth}
+                onChange={(e) => onStyleSettingsChange({ ...styleSettings, lineWidth: parseInt(e.target.value) })}
+                style={{
+                  width: "100%",
+                  cursor: "pointer",
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", color: "#999", fontSize: "10px", marginBottom: "4px" }}>Line Style</label>
+              <select
+                value={styleSettings.lineStyle}
+                onChange={(e) => onStyleSettingsChange({ ...styleSettings, lineStyle: parseInt(e.target.value) })}
+                style={{
+                  width: "100%",
+                  padding: "4px 6px",
+                  background: "#2a2a2a",
+                  border: "1px solid #444",
+                  borderRadius: "4px",
+                  color: "#fff",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+              >
+                <option value={0}>Solid</option>
+                <option value={1}>Dotted</option>
+                <option value={2}>Dashed</option>
+                <option value={3}>Large Dashed</option>
+              </select>
+            </div>
+
+            <div style={{ 
+              marginTop: "10px", 
+              paddingTop: "8px", 
+              borderTop: "1px solid #333",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px"
+            }}>
+              <div style={{
+                width: "100%",
+                height: `${styleSettings.lineWidth}px`,
+                background: styleSettings.lineColor,
+                borderRadius: "2px",
+                borderStyle: styleSettings.lineStyle === 0 ? "solid" : styleSettings.lineStyle === 1 ? "dotted" : "dashed",
+              }} />
+            </div>
           </div>
         )}
 

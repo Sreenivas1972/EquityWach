@@ -24,7 +24,7 @@ import type { CandleData, Interval } from "../types";
 import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
 import IntervalSelector from "./IntervalSelector";
 import ChartNotes from "./ChartNotes";
-import { DrawingToolbar, DrawingToolType, getRequiredAnchors } from "./DrawingToolbar";
+import { DrawingToolbar, DrawingToolType, getRequiredAnchors, DrawingStyleSettings, DEFAULT_STYLE, lineStyleToDash } from "./DrawingToolbar";
 
 type TrendlineAnchor = {
   time: number;
@@ -36,6 +36,7 @@ type DrawingData = {
   type: DrawingToolType;
   anchors: TrendlineAnchor[];
   text?: string;
+  style?: DrawingStyleSettings;
 };
 
 function parseDrawingPayload(raw: string[]): DrawingData[] {
@@ -172,6 +173,19 @@ export default function SRChartPanel({
   const [drawingAnchors, setDrawingAnchors] = useState<TrendlineAnchor[]>([]);
   const [previewLine, setPreviewLine] = useState<TrendlineAnchor[] | null>(null);
   const [drawingText, setDrawingText] = useState("");
+  const [styleSettings, setStyleSettings] = useState<DrawingStyleSettings>(() => {
+    try {
+      const saved = localStorage.getItem("drawingStyleSettings");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return DEFAULT_STYLE;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("drawingStyleSettings", JSON.stringify(styleSettings));
+  }, [styleSettings]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -313,6 +327,7 @@ export default function SRChartPanel({
           type: selectedTool,
           anchors: newAnchors,
           text: isTextTool ? (drawingText || "Text") : undefined,
+          style: { ...styleSettings },
         };
 
         const nextDrawings = [...drawings, drawing];
@@ -329,7 +344,7 @@ export default function SRChartPanel({
     return () => {
       chart.unsubscribeClick(handleChartClick);
     };
-  }, [selectedTool, drawingAnchors, drawings, symbol, drawingText]);
+  }, [selectedTool, drawingAnchors, drawings, symbol, drawingText, styleSettings]);
 
   // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
@@ -371,8 +386,17 @@ export default function SRChartPanel({
           price: a.price,
         }));
 
+        const drawingStyle = drawing.style || DEFAULT_STYLE;
+        const lineDash = lineStyleToDash(drawingStyle.lineStyle);
+        const style: any = {
+          lineColor: drawingStyle.lineColor,
+          lineWidth: drawingStyle.lineWidth,
+        };
+        if (lineDash) {
+          style.lineDash = lineDash;
+        }
+
         let drawingInstance: any = null;
-        const style = { lineColor: "#2563eb", lineWidth: 2 };
 
         switch (drawing.type) {
           case "trendline":
@@ -558,6 +582,8 @@ export default function SRChartPanel({
                 }}
                 drawingText={drawingText}
                 onDrawingTextChange={setDrawingText}
+                styleSettings={styleSettings}
+                onStyleSettingsChange={setStyleSettings}
               />
             )}
             <ChartNotes
@@ -591,16 +617,27 @@ export default function SRChartPanel({
             {drawings.length > 0 && (
             <div className="sr-drawing-list">
               <strong>Saved drawings ({drawings.length})</strong>
-              {drawings.map((drawing) => (
-                <div key={drawing.id} className="sr-drawing-item">
-                  <span>
+              {drawings.map((drawing) => {
+                const drawingStyle = drawing.style || DEFAULT_STYLE;
+                return (
+                <div key={drawing.id} className="sr-drawing-item" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div 
+                    style={{ 
+                      width: "16px", 
+                      height: `${drawingStyle.lineWidth * 2}px`, 
+                      background: drawingStyle.lineColor,
+                      borderRadius: "2px",
+                      flexShrink: 0,
+                    }} 
+                  />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     <strong>{drawing.type}</strong>
                     {drawing.text && <em style={{ color: "#666", marginLeft: "4px" }}>"{drawing.text}"</em>}
-                    {!drawing.text && (
-                      <>
-                        : {drawing.anchors[0] && `${drawing.anchors[0].price.toFixed(2)}`}
+                    {!drawing.text && drawing.anchors[0] && (
+                      <span style={{ color: "#666" }}>
+                        {" "}{drawing.anchors[0].price.toFixed(2)}
                         {drawing.anchors[1] && ` → ${drawing.anchors[1].price.toFixed(2)}`}
-                      </>
+                      </span>
                     )}
                   </span>
                   <button
@@ -611,7 +648,8 @@ export default function SRChartPanel({
                     ×
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
