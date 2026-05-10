@@ -32,6 +32,7 @@ export default function ChartNotes({
   const crosshairPriceRef = useRef<number | null>(null);
   const crosshairTimeRef = useRef<number | null>(null);
   const pendingNoteAnchorRef = useRef<{ anchorTime: number; anchorPrice: number } | null>(null);
+  const dragPosRef = useRef<{ noteId: string; startX: number; startY: number; noteX: number; noteY: number } | null>(null);
 
   useEffect(() => {
     if (!symbol) {
@@ -256,11 +257,17 @@ export default function ChartNotes({
                   const startNoteX = noteX;
                   const startNoteY = noteY;
                   
+                  dragPosRef.current = { noteId: note.id, startX, startY, noteX: startNoteX, noteY: startNoteY };
+                  
                   const handleMouseMove = (moveEvent: MouseEvent) => {
-                    const deltaX = moveEvent.clientX - startX;
-                    const deltaY = moveEvent.clientY - startY;
+                    if (!dragPosRef.current) return;
+                    const deltaX = moveEvent.clientX - dragPosRef.current.startX;
+                    const deltaY = moveEvent.clientY - dragPosRef.current.startY;
                     const newX = startNoteX + deltaX;
                     const newY = startNoteY + deltaY;
+                    
+                    dragPosRef.current.noteX = newX;
+                    dragPosRef.current.noteY = newY;
                     
                     setNotes(prev => prev.map(n => 
                       n.id === note.id ? { ...n, pos_x: newX, pos_y: newY } : n
@@ -271,11 +278,9 @@ export default function ChartNotes({
                     window.removeEventListener('mousemove', handleMouseMove);
                     window.removeEventListener('mouseup', handleMouseUp);
                     
-                    const finalNote = notes.find(n => n.id === note.id);
-                    if (finalNote) {
-                      const deltaX = finalNote.pos_x !== null ? finalNote.pos_x - noteX : 0;
-                      const deltaY = finalNote.pos_y !== null ? finalNote.pos_y - noteY : 0;
-                      handleNotePositionUpdate(note.id, startNoteX + deltaX, startNoteY + deltaY);
+                    if (dragPosRef.current && dragPosRef.current.noteId === note.id) {
+                      handleNotePositionUpdate(note.id, dragPosRef.current.noteX, dragPosRef.current.noteY);
+                      dragPosRef.current = null;
                     }
                   };
                   
