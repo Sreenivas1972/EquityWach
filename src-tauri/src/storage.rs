@@ -156,6 +156,7 @@ pub fn open_db() -> SqlResult<Connection> {
         CREATE TABLE IF NOT EXISTS chart_notes (
             id            TEXT    NOT NULL PRIMARY KEY,
             symbol        TEXT    NOT NULL,
+            panel_type    TEXT    NOT NULL DEFAULT 'base',
             note_text     TEXT    NOT NULL,
             anchor_time   INTEGER NOT NULL,
             anchor_price  REAL    NOT NULL,
@@ -166,6 +167,7 @@ pub fn open_db() -> SqlResult<Connection> {
             updated_ts    INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_chart_notes_symbol ON chart_notes(symbol);
+        CREATE INDEX IF NOT EXISTS idx_chart_notes_panel ON chart_notes(symbol, panel_type);
         
         -- Note hashtags (unique list for autocomplete)
         CREATE TABLE IF NOT EXISTS note_hashtags (
@@ -213,6 +215,15 @@ pub fn open_db() -> SqlResult<Connection> {
         conn.execute("ALTER TABLE fib_drawings ADD COLUMN last_accessed INTEGER", [])?;
         // Backfill with updated_at so existing drawings are not immediately pruned
         conn.execute("UPDATE fib_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
+    }
+
+    // Migration: Add panel_type to chart_notes
+    let has_panel_type = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('chart_notes') WHERE name='panel_type'")?
+        .query_row([], |row| row.get::<_, i64>(0))? > 0;
+
+    if !has_panel_type {
+        conn.execute("ALTER TABLE chart_notes ADD COLUMN panel_type TEXT NOT NULL DEFAULT 'base'", [])?;
     }
 
     Ok(conn)
@@ -1245,22 +1256,23 @@ pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSy
 
 // ─── Chart Notes (SQLite) ─────────────────────────────────────────────────────
 
-pub fn get_chart_notes_for_symbol(symbol: &str, conn: &Connection) -> SqlResult<Vec<crate::models::ChartNote>> {
+pub fn get_chart_notes_for_symbol(symbol: &str, panel_type: &str, conn: &Connection) -> SqlResult<Vec<crate::models::ChartNote>> {
     let mut stmt = conn.prepare(
-        "SELECT id, symbol, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at 
-         FROM chart_notes WHERE symbol = ?1 ORDER BY created_ts ASC"
+        "SELECT id, symbol, panel_type, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at 
+         FROM chart_notes WHERE symbol = ?1 AND panel_type = ?2 ORDER BY created_ts ASC"
     )?;
     let rows = stmt
-        .query_map(params![symbol], |row| {
+        .query_map(params![symbol, panel_type], |row| {
             Ok(crate::models::ChartNote {
                 id: row.get(0)?,
                 symbol: row.get(1)?,
-                note_text: row.get(2)?,
-                anchor_time: row.get(3)?,
-                anchor_price: row.get(4)?,
-                pos_x: row.get(5)?,
-                pos_y: row.get(6)?,
-                created_at: row.get(7)?,
+                panel_type: row.get(2)?,
+                note_text: row.get(3)?,
+                anchor_time: row.get(4)?,
+                anchor_price: row.get(5)?,
+                pos_x: row.get(6)?,
+                pos_y: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -1270,19 +1282,20 @@ pub fn get_chart_notes_for_symbol(symbol: &str, conn: &Connection) -> SqlResult<
 
 pub fn add_chart_note(
     symbol: &str,
+    panel_type: &str,
     note_text: &str,
     anchor_time: i64,
     anchor_price: f64,
     conn: &Connection,
 ) -> SqlResult<String> {
-    let id = format!("note_{}_{}", symbol, Utc::now().timestamp_millis());
+    let id = format!("note_{}_{}_{}", panel_type, symbol, Utc::now().timestamp_millis());
     let created_at = ts_to_rfc3339(Utc::now().timestamp());
     let created_ts = Utc::now().timestamp();
 
     conn.execute(
-        "INSERT INTO chart_notes (id, symbol, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at, created_ts, updated_ts) 
-         VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6, ?7, ?7)",
-        params![id, symbol, note_text, anchor_time, anchor_price, created_at, created_ts],
+        "INSERT INTO chart_notes (id, symbol, panel_type, note_text, anchor_time, anchor_price, pos_x, pos_y, created_at, created_ts, updated_ts) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, ?7, ?8, ?8)",
+        params![id, symbol, panel_type, note_text, anchor_time, anchor_price, created_at, created_ts],
     )?;
     
     extract_and_save_hashtags(note_text, conn)?;

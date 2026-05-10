@@ -297,20 +297,21 @@ fn delete_long_position(id: String) -> Result<(), String> {
 // ─── Chart Notes ───────────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_chart_notes(symbol: String) -> Result<Vec<ChartNote>, String> {
+fn get_chart_notes(symbol: String, panel_type: String) -> Result<Vec<ChartNote>, String> {
     let conn = storage::open_db().map_err(|e| e.to_string())?;
-    storage::get_chart_notes_for_symbol(&symbol, &conn).map_err(|e| e.to_string())
+    storage::get_chart_notes_for_symbol(&symbol, &panel_type, &conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn add_chart_note(
     symbol: String,
+    panel_type: String,
     note_text: String,
     anchor_time: i64,
     anchor_price: f64,
 ) -> Result<String, String> {
     let conn = storage::open_db().map_err(|e| e.to_string())?;
-    storage::add_chart_note(&symbol, &note_text, anchor_time, anchor_price, &conn)
+    storage::add_chart_note(&symbol, &panel_type, &note_text, anchor_time, anchor_price, &conn)
         .map_err(|e| e.to_string())
 }
 

@@ -114,6 +114,7 @@ export interface NewsResponse {
 export interface ChartNote {
   id: string;
   symbol: string;
+  panel_type: string;
   note_text: string;
   anchor_time: number;
   anchor_price: number;

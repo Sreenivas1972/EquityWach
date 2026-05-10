@@ -9,6 +9,7 @@ import { api } from "../services/tauriApi";
 import type { CandleData, Interval } from "../types";
 import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
 import IntervalSelector from "./IntervalSelector";
+import ChartNotes from "./ChartNotes";
 
 type TrendlineAnchor = {
   time: number;
@@ -671,7 +672,14 @@ export default function SRChartPanel({
           </div>
 
           {/* Chart area */}
-          <div className="chart-canvas-container" ref={containerRef}>
+          <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+            <ChartNotes
+              symbol={symbol}
+              panelType="sr"
+              chartRef={chartRef}
+              seriesRef={seriesRef}
+              candles={candles}
+            />
             {isLoading && (
               <div className="chart-loading-overlay">
                 <span className="spinner" />

@@ -7,6 +7,7 @@ import {
 } from "lightweight-charts";
 import type { CandleData, Interval } from "../types";
 import { toChartTime } from "../windows/shared";
+import ChartNotes from "./ChartNotes";
 
 interface Props {
   symbol: string | null;
@@ -183,7 +184,14 @@ export default function EMAChartPanel({
       )}
 
       {/* Chart area */}
-      <div className="chart-canvas-container" ref={containerRef}>
+      <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+        <ChartNotes
+          symbol={symbol}
+          panelType="ema"
+          chartRef={chartRef}
+          seriesRef={seriesRef}
+          candles={candles}
+        />
         {isLoading && (
           <div className="chart-loading-overlay">
             <span className="spinner" />
