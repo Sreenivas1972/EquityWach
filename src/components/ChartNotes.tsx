@@ -269,6 +269,15 @@ export default function ChartNotes({
   }, [calculateNotePositions]);
 
   useEffect(() => {
+    if (notes.length > 0 && candles.length > 0) {
+      const timer = setTimeout(() => {
+        calculateNotePositions();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [notes, candles, calculateNotePositions]);
+
+  useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
 
