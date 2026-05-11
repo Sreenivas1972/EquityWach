@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../services/tauriApi";
 import type {
-  AuthStatus,
+  UpstoxAuthStatus,
   FetchSettings,
   RetentionSettings,
   WatchlistEntry,
@@ -14,7 +14,7 @@ interface Props {
 
 export default function SettingsPanel({ onClose }: Props) {
   // ── Auth state ────────────────────────────────────────────────────────────
-  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [authStatus, setAuthStatus] = useState<UpstoxAuthStatus | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [analyticsToken, setAnalyticsToken] = useState("");

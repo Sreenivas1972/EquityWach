@@ -4,7 +4,7 @@ use chrono::{Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, Result as SqlResult};
 
 use crate::models::{
-    CandleData, FetchSettings, InstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
+    CandleData, FetchSettings, UpstoxInstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
     WatchlistEntry,
 };
 
@@ -452,7 +452,7 @@ pub fn prune_candles(settings: &RetentionSettings, conn: &Connection) -> SqlResu
 
 // ─── Instruments ─────────────────────────────────────────────────────────────
 
-pub fn save_instruments(instruments: &[InstrumentInfo], conn: &Connection) -> SqlResult<()> {
+pub fn save_instruments(instruments: &[UpstoxInstrumentInfo], conn: &Connection) -> SqlResult<()> {
     conn.execute_batch("DELETE FROM instruments")?;
     for inst in instruments {
         conn.execute(

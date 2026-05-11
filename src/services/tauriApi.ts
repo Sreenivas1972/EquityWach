@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  AuthStatus,
+  UpstoxAuthStatus,
   ChartDataResponse,
   ChartNote,
   ColorFilteredSymbol,
@@ -96,7 +96,7 @@ export const api = {
     invoke<void>("update_fetch_settings", { settings }),
 
   // ── Upstox auth ─────────────────────────────────────────────────────────────
-  getAuthStatus: () => invoke<AuthStatus>("get_auth_status"),
+  getAuthStatus: () => invoke<UpstoxAuthStatus>("get_auth_status"),
 
   getSavedUpstoxCredentials: () =>
     invoke<SavedUpstoxCredentials | null>("get_saved_upstox_credentials"),

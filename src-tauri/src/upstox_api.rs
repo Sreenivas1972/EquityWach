@@ -3,7 +3,7 @@ use serde::Deserialize;
 use rusqlite::params;
 use std::collections::HashMap;
 
-use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, NewsArticle, NewsResponse, PivotSource};
+use crate::models::{CandleData, ChartDataResponse, FetchSettings, UpstoxInstrumentInfo, NewsArticle, NewsResponse, PivotSource};
 use crate::storage;
 
 const UPSTOX_V3_BASE: &str = "https://api.upstox.com/v3";
@@ -44,7 +44,7 @@ pub async fn refresh_instruments() -> Result<usize, String> {
     let instruments_data: Vec<InstrumentData> = serde_json::from_str(&json_text)
         .map_err(|e| format!("JSON parse error: {}", e))?;
 
-    let mut instruments: Vec<InstrumentInfo> = Vec::new();
+    let mut instruments: Vec<UpstoxInstrumentInfo> = Vec::new();
     for inst in instruments_data {
         let segment = inst.segment.as_deref().unwrap_or("");
         let instrument_type = inst.instrument_type.as_deref().unwrap_or("");
@@ -74,7 +74,7 @@ pub async fn refresh_instruments() -> Result<usize, String> {
                 hasher.finish() as u32
             });
         
-        instruments.push(InstrumentInfo {
+        instruments.push(UpstoxInstrumentInfo {
             instrument_token,
             tradingsymbol: trading_symbol,
             exchange: exchange.to_string(),

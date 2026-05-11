@@ -97,7 +97,7 @@ pub struct UpstoxConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthStatus {
+pub struct UpstoxAuthStatus {
     pub is_authenticated: bool,
     pub api_key: Option<String>,
     pub has_oauth_token: bool,
@@ -113,7 +113,7 @@ pub struct SavedUpstoxCredentials {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstrumentInfo {
+pub struct UpstoxInstrumentInfo {
     pub instrument_token: u32,
     pub tradingsymbol: String,
     pub exchange: String,

@@ -1,13 +1,13 @@
 use serde::Deserialize;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 
-use crate::models::{AuthStatus, SavedUpstoxCredentials};
+use crate::models::{UpstoxAuthStatus, SavedUpstoxCredentials};
 use crate::storage;
 
 const UPSTOX_API_BASE: &str = "https://api.upstox.com/v2";
 pub const UPSTOX_CALLBACK_PORT: u16 = 5050;
 
-pub fn get_auth_status() -> AuthStatus {
+pub fn get_auth_status() -> UpstoxAuthStatus {
     let config = storage::load_upstox_config();
     match config {
         Some(c) => {
@@ -23,7 +23,7 @@ pub fn get_auth_status() -> AuthStatus {
                 "API key configured but not authenticated. Please login or enter an Analytics Token.".to_string()
             };
             
-            AuthStatus {
+            UpstoxAuthStatus {
                 is_authenticated,
                 api_key: Some(c.api_key),
                 has_oauth_token: has_oauth,
@@ -31,7 +31,7 @@ pub fn get_auth_status() -> AuthStatus {
                 message,
             }
         }
-        None => AuthStatus {
+        None => UpstoxAuthStatus {
             is_authenticated: false,
             api_key: None,
             has_oauth_token: false,

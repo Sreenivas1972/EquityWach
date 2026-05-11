@@ -56,7 +56,7 @@ export interface SymbolSearchResult {
   watchlists: string[];
 }
 
-export interface AuthStatus {
+export interface UpstoxAuthStatus {
   is_authenticated: boolean;
   api_key: string | null;
   has_oauth_token: boolean;
