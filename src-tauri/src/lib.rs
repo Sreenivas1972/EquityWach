@@ -50,6 +50,11 @@ fn get_symbols_with_positions() -> Result<Vec<ColorFilteredSymbol>, String> {
 }
 
 #[tauri::command]
+fn get_symbols_by_hashtag(hashtag: String) -> Result<Vec<ColorFilteredSymbol>, String> {
+    watchlists::get_symbols_by_hashtag(&hashtag)
+}
+
+#[tauri::command]
 fn update_symbol_color(watchlist_name: String, symbol: String, color: Option<String>) -> Result<(), String> {
     watchlists::update_symbol_color(&watchlist_name, &symbol, color.as_deref())
 }
@@ -461,6 +466,7 @@ pub fn run() {
             get_symbols_by_color,
             get_symbols_with_alerts,
             get_symbols_with_positions,
+            get_symbols_by_hashtag,
             update_symbol_color,
             update_symbol_tag_color,
             remove_symbol,

@@ -41,6 +41,9 @@ export const api = {
   getSymbolsWithPositions: () =>
     invoke<ColorFilteredSymbol[]>("get_symbols_with_positions"),
 
+  getSymbolsByHashtag: (hashtag: string) =>
+    invoke<ColorFilteredSymbol[]>("get_symbols_by_hashtag", { hashtag }),
+
   updateSymbolColor: (watchlistName: string, symbol: string, color: string | null) =>
     invoke<void>("update_symbol_color", { watchlistName, symbol, color }),
 

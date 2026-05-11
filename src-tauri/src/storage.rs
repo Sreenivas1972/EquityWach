@@ -1328,6 +1328,39 @@ pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSy
     Ok(results)
 }
 
+pub fn get_symbols_by_hashtag(hashtag: &str) -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    let conn = open_db().map_err(|e| e.to_string())?;
+    
+    let search_tag = format!("#{}", hashtag);
+    
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT cn.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+         FROM chart_notes cn 
+         LEFT JOIN watchlist_symbols ws ON cn.symbol = ws.symbol 
+         LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         WHERE cn.note_text LIKE ?1
+         ORDER BY cn.symbol"
+    ).map_err(|e| e.to_string())?;
+    
+    let rows = stmt.query_map(params![format!("%{}%", search_tag)], |row| {
+        Ok(crate::models::ColorFilteredSymbol {
+            symbol: row.get(0)?,
+            watchlist_name: row.get(1)?,
+            color: row.get(2)?,
+            tag_color: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut results: Vec<crate::models::ColorFilteredSymbol> = Vec::new();
+    for row in rows {
+        if let Ok(s) = row {
+            results.push(s);
+        }
+    }
+    
+    Ok(results)
+}
+
 // ─── Chart Notes (SQLite) ─────────────────────────────────────────────────────
 
 pub fn get_chart_notes_for_symbol(symbol: &str, panel_type: &str, conn: &Connection) -> SqlResult<Vec<crate::models::ChartNote>> {

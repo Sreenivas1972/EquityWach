@@ -58,3 +58,7 @@ pub fn get_symbols_with_alerts() -> Result<Vec<crate::models::ColorFilteredSymbo
 pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
     storage::get_symbols_with_positions()
 }
+
+pub fn get_symbols_by_hashtag(hashtag: &str) -> Result<Vec<crate::models::ColorFilteredSymbol>, String> {
+    storage::get_symbols_by_hashtag(hashtag)
+}
