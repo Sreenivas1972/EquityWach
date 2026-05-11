@@ -579,6 +579,8 @@ export default function App() {
     <div className="app-root">
       {view === "settings" ? (
         <SettingsPanel onClose={handleCloseSettings} />
+      ) : mode === "colorfilter" ? (
+        <ColorFilterPanel />
       ) : (
         <div className="chart-layout">
           <div className="chart-pane">
