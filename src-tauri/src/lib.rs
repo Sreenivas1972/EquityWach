@@ -157,8 +157,8 @@ fn update_fetch_settings(settings: FetchSettings) -> Result<(), String> {
 // ─── Upstox auth ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_auth_status() -> models::UpstoxAuthStatus {
-    upstox_auth::get_auth_status()
+fn get_upstox_auth_status() -> models::UpstoxAuthStatus {
+    upstox_auth::get_upstox_auth_status()
 }
 
 #[tauri::command]
@@ -483,7 +483,7 @@ pub fn run() {
             update_retention_settings,
             get_fetch_settings,
             update_fetch_settings,
-            get_auth_status,
+            get_upstox_auth_status,
             save_upstox_credentials,
             get_saved_upstox_credentials,
             upstox_start_login,

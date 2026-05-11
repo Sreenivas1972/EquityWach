@@ -7,7 +7,7 @@ use crate::storage;
 const UPSTOX_API_BASE: &str = "https://api.upstox.com/v2";
 pub const UPSTOX_CALLBACK_PORT: u16 = 5050;
 
-pub fn get_auth_status() -> UpstoxAuthStatus {
+pub fn get_upstox_auth_status() -> UpstoxAuthStatus {
     let config = storage::load_upstox_config();
     match config {
         Some(c) => {

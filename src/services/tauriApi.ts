@@ -96,7 +96,7 @@ export const api = {
     invoke<void>("update_fetch_settings", { settings }),
 
   // ── Upstox auth ─────────────────────────────────────────────────────────────
-  getAuthStatus: () => invoke<UpstoxAuthStatus>("get_auth_status"),
+  getUpstoxAuthStatus: () => invoke<UpstoxAuthStatus>("get_upstox_auth_status"),
 
   getSavedUpstoxCredentials: () =>
     invoke<SavedUpstoxCredentials | null>("get_saved_upstox_credentials"),

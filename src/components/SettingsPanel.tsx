@@ -68,7 +68,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
   // ── Load initial data ─────────────────────────────────────────────────────
   useEffect(() => {
-    api.getAuthStatus().then(setAuthStatus).catch(() => {});
+    api.getUpstoxAuthStatus().then(setAuthStatus).catch(() => {});
     api.getSavedUpstoxCredentials().then((saved) => {
       if (!saved) {
         return;
@@ -95,7 +95,7 @@ export default function SettingsPanel({ onClose }: Props) {
         setLoginPending(false);
         if (event.payload.success) {
           setLoginMsg("✓ Authentication successful!");
-          api.getAuthStatus().then(setAuthStatus).catch(() => {});
+          api.getUpstoxAuthStatus().then(setAuthStatus).catch(() => {});
         } else {
           setLoginMsg(`✗ ${event.payload.message}`);
         }
@@ -114,7 +114,7 @@ export default function SettingsPanel({ onClose }: Props) {
       await api.saveUpstoxCredentials(apiKey.trim(), apiSecret.trim());
       setCredsSaved(true);
       setLoginMsg("Credentials saved.");
-      const s = await api.getAuthStatus();
+      const s = await api.getUpstoxAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setLoginMsg(`Error: ${e}`);
@@ -128,7 +128,7 @@ export default function SettingsPanel({ onClose }: Props) {
       if (hasTypedCredentials) {
         await api.saveUpstoxCredentials(apiKey.trim(), apiSecret.trim());
         setCredsSaved(true);
-        const status = await api.getAuthStatus();
+        const status = await api.getUpstoxAuthStatus();
         setAuthStatus(status);
       }
 
@@ -144,7 +144,7 @@ export default function SettingsPanel({ onClose }: Props) {
     try {
       await api.upstoxLogout();
       setLoginMsg("Logged out.");
-      const s = await api.getAuthStatus();
+      const s = await api.getUpstoxAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setLoginMsg(`Error: ${e}`);
@@ -156,7 +156,7 @@ export default function SettingsPanel({ onClose }: Props) {
     try {
       await api.saveAnalyticsToken(analyticsToken.trim());
       setAnalyticsMsg("Analytics token saved.");
-      const s = await api.getAuthStatus();
+      const s = await api.getUpstoxAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setAnalyticsMsg(`Error: ${e}`);
@@ -168,7 +168,7 @@ export default function SettingsPanel({ onClose }: Props) {
       await api.clearAnalyticsToken();
       setAnalyticsToken("");
       setAnalyticsMsg("Analytics token cleared.");
-      const s = await api.getAuthStatus();
+      const s = await api.getUpstoxAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setAnalyticsMsg(`Error: ${e}`);
