@@ -4,7 +4,7 @@ import { api } from "../services/tauriApi";
 import type { ColorFilteredSymbol } from "../types";
 import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
 
-type ColorFilterType = 'color' | 'alerts' | 'positions';
+type ColorFilterType = 'color' | 'alerts' | 'positions' | 'hashtags';
 
 function displaySymbol(s: string): string {
   return s.includes(":") ? s.split(":")[1] : s;
@@ -51,9 +51,15 @@ function getDisplayTagColor(tagColor: string | null): string | undefined {
 export default function ColorFilterPanel() {
   const [colorFilterType, setColorFilterType] = useState<ColorFilterType>('alerts');
   const [colorFilterValue, setColorFilterValue] = useState<{ color: string | null; tagColor: string | null }>({ color: null, tagColor: null });
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
+  const [hashtags, setHashtags] = useState<string[]>([]);
   const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getAllHashtags().then(setHashtags).catch(() => {});
+  }, []);
 
   const displaySymbols = useMemo(() => {
     if (colorFilterType === 'color') {
@@ -95,6 +101,11 @@ export default function ColorFilterPanel() {
       return;
     }
 
+    if (colorFilterType === 'hashtags' && !selectedHashtag) {
+      setColorFilteredSymbols([]);
+      return;
+    }
+
     let cancelled = false;
     async function loadFilteredSymbols() {
       setIsLoading(true);
@@ -104,6 +115,8 @@ export default function ColorFilterPanel() {
           syms = await api.getSymbolsWithAlerts();
         } else if (colorFilterType === 'positions') {
           syms = await api.getSymbolsWithPositions();
+        } else if (colorFilterType === 'hashtags') {
+          syms = await api.getSymbolsByHashtag(selectedHashtag!);
         } else {
           syms = await api.getSymbolsByColor(colorFilterValue.color, colorFilterValue.tagColor);
         }
@@ -123,7 +136,7 @@ export default function ColorFilterPanel() {
     }
     loadFilteredSymbols();
     return () => { cancelled = true; };
-  }, [colorFilterType, colorFilterValue]);
+  }, [colorFilterType, colorFilterValue, selectedHashtag]);
 
   const handleColorFilterChange = useCallback((color: string | null, tagColor: string | null) => {
     setColorFilterValue({ color, tagColor });
@@ -131,6 +144,9 @@ export default function ColorFilterPanel() {
 
   const handleColorFilterTypeChange = useCallback((type: ColorFilterType) => {
     setColorFilterType(type);
+    if (type !== 'hashtags') {
+      setSelectedHashtag(null);
+    }
   }, []);
 
   const handleSelectSymbol = useCallback(async (symbol: string) => {
@@ -192,6 +208,14 @@ export default function ColorFilterPanel() {
           >
             📈
           </button>
+          <button
+            type="button"
+            className={`color-filter-type-btn${colorFilterType === 'hashtags' ? ' color-filter-type-btn--active' : ''}`}
+            onClick={() => handleColorFilterTypeChange('hashtags')}
+            title="Filter by hashtag"
+          >
+            #
+          </button>
         </div>
         {colorFilterType === 'color' && (
           <div className="color-filter-selects">
@@ -221,16 +245,33 @@ export default function ColorFilterPanel() {
             </select>
           </div>
         )}
+        {colorFilterType === 'hashtags' && (
+          <div className="color-filter-selects">
+            <select
+              className="color-filter-select"
+              value={selectedHashtag ?? ""}
+              onChange={(e) => setSelectedHashtag(e.target.value || null)}
+            >
+              <option value="">Select hashtag</option>
+              {hashtags.map((tag) => (
+                <option key={tag} value={tag}>
+                  #{tag}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="color-filter-symbol-list">
         {isLoading && (
           <div className="symbol-list-loading">Loading symbols…</div>
         )}
-        {!isLoading && displaySymbols.length === 0 && (colorFilterType !== 'color' || colorFilterValue.color || colorFilterValue.tagColor) && (
+        {!isLoading && displaySymbols.length === 0 && (
           <div className="symbol-list-empty">
             {colorFilterType === 'alerts' && 'No symbols with price alerts.'}
             {colorFilterType === 'positions' && 'No symbols with long positions.'}
+            {colorFilterType === 'hashtags' && (selectedHashtag ? 'No symbols with this hashtag.' : 'Select a hashtag to filter.')}
             {colorFilterType === 'color' && 'No symbols match the filter.'}
           </div>
         )}
