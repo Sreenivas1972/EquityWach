@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  AuthStatus,
+  KiteAuthStatus,
   ChartDataResponse,
   ChartNote,
   ColorFilteredSymbol,
@@ -95,7 +95,7 @@ export const api = {
     invoke<void>("update_fetch_settings", { settings }),
 
   // ── Kite auth ─────────────────────────────────────────────────────────────
-  getAuthStatus: () => invoke<AuthStatus>("get_auth_status"),
+  getKiteAuthStatus: () => invoke<KiteAuthStatus>("get_kite_auth_status"),
 
   getSavedKiteCredentials: () =>
     invoke<SavedKiteCredentials | null>("get_saved_kite_credentials"),

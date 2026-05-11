@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::models::{AuthStatus, SavedKiteCredentials};
+use crate::models::{KiteAuthStatus, SavedKiteCredentials};
 use crate::storage;
 
 const KITE_API_BASE: &str = "https://api.kite.trade";
@@ -11,20 +11,20 @@ pub const KITE_CALLBACK_PORT: u16 = 6010;
 
 // ─── Status ──────────────────────────────────────────────────────────────────
 
-pub fn get_auth_status() -> AuthStatus {
+pub fn get_kite_auth_status() -> KiteKiteAuthStatus {
     let config = storage::load_kite_config();
     match config {
-        Some(c) if c.access_token.is_some() => AuthStatus {
+        Some(c) if c.access_token.is_some() => KiteAuthStatus {
             is_authenticated: true,
             api_key: Some(c.api_key),
             message: "Authenticated".to_string(),
         },
-        Some(c) => AuthStatus {
+        Some(c) => KiteAuthStatus {
             is_authenticated: false,
             api_key: Some(c.api_key),
             message: "API key configured but not authenticated. Please click Login.".to_string(),
         },
-        None => AuthStatus {
+        None => KiteAuthStatus {
             is_authenticated: false,
             api_key: None,
             message: "Not configured. Enter API key and secret in Settings.".to_string(),

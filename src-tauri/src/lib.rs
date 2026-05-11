@@ -157,8 +157,8 @@ fn update_fetch_settings(settings: FetchSettings) -> Result<(), String> {
 // ─── Kite auth ────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_auth_status() -> models::AuthStatus {
-    kite_auth::get_auth_status()
+fn get_kite_auth_status() -> models::KiteAuthStatus {
+    kite_auth::get_kite_auth_status()
 }
 
 #[tauri::command]
@@ -460,7 +460,7 @@ pub fn run() {
             update_retention_settings,
             get_fetch_settings,
             update_fetch_settings,
-            get_auth_status,
+            get_kite_auth_status,
             save_kite_credentials,
             get_saved_kite_credentials,
             kite_start_login,

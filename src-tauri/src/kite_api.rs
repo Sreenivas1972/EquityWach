@@ -2,7 +2,7 @@ use chrono::{Datelike, Timelike, Duration, TimeZone, Utc};
 use serde::Deserialize;
 use rusqlite::params;
 
-use crate::models::{CandleData, ChartDataResponse, FetchSettings, InstrumentInfo, PivotSource};
+use crate::models::{CandleData, ChartDataResponse, FetchSettings, KiteInstrumentInfo, PivotSource};
 use crate::storage;
 
 const KITE_API_BASE: &str = "https://api.kite.trade";
@@ -33,7 +33,7 @@ pub async fn refresh_instruments() -> Result<usize, String> {
     // Parse only NSE EQ instruments
     // Columns: instrument_token,exchange_token,tradingsymbol,name,last_price,
     //          expiry,strike,tick_size,lot_size,instrument_type,segment,exchange
-    let mut instruments: Vec<InstrumentInfo> = Vec::new();
+    let mut instruments: Vec<KiteInstrumentInfo> = Vec::new();
     let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
     for result in reader.records() {
         let rec = result.map_err(|e| e.to_string())?;
@@ -49,7 +49,7 @@ pub async fn refresh_instruments() -> Result<usize, String> {
         if token == 0 {
             continue;
         }
-        instruments.push(InstrumentInfo {
+        instruments.push(KiteInstrumentInfo {
             instrument_token: token,
             tradingsymbol: rec[2].to_string(),
             exchange: exchange.to_string(),

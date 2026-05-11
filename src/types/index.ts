@@ -56,7 +56,7 @@ export interface SymbolSearchResult {
   watchlists: string[];
 }
 
-export interface AuthStatus {
+export interface KiteAuthStatus {
   is_authenticated: boolean;
   api_key: string | null;
   message: string;

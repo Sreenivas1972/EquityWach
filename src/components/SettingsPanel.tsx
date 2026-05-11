@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../services/tauriApi";
 import type {
-  AuthStatus,
+  KiteAuthStatus,
   FetchSettings,
   RetentionSettings,
   WatchlistEntry,
@@ -14,7 +14,7 @@ interface Props {
 
 export default function SettingsPanel({ onClose }: Props) {
   // ── Auth state ────────────────────────────────────────────────────────────
-  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [authStatus, setAuthStatus] = useState<KiteAuthStatus | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [loginMsg, setLoginMsg] = useState("");
@@ -51,7 +51,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
   // ── Load initial data ─────────────────────────────────────────────────────
   useEffect(() => {
-    api.getAuthStatus().then(setAuthStatus).catch(() => {});
+    api.getKiteAuthStatus().then(setAuthStatus).catch(() => {});
     api.getSavedKiteCredentials().then((saved) => {
       if (!saved) {
         return;
@@ -75,7 +75,7 @@ export default function SettingsPanel({ onClose }: Props) {
         setLoginPending(false);
         if (event.payload.success) {
           setLoginMsg("✓ Authentication successful!");
-          api.getAuthStatus().then(setAuthStatus).catch(() => {});
+          api.getKiteAuthStatus().then(setAuthStatus).catch(() => {});
         } else {
           setLoginMsg(`✗ ${event.payload.message}`);
         }
@@ -94,7 +94,7 @@ export default function SettingsPanel({ onClose }: Props) {
       await api.saveKiteCredentials(apiKey.trim(), apiSecret.trim());
       setCredsSaved(true);
       setLoginMsg("Credentials saved.");
-      const s = await api.getAuthStatus();
+      const s = await api.getKiteAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setLoginMsg(`Error: ${e}`);
@@ -108,7 +108,7 @@ export default function SettingsPanel({ onClose }: Props) {
       if (hasTypedCredentials) {
         await api.saveKiteCredentials(apiKey.trim(), apiSecret.trim());
         setCredsSaved(true);
-        const status = await api.getAuthStatus();
+        const status = await api.getKiteAuthStatus();
         setAuthStatus(status);
       }
 
@@ -124,7 +124,7 @@ export default function SettingsPanel({ onClose }: Props) {
     try {
       await api.kiteLogout();
       setLoginMsg("Logged out.");
-      const s = await api.getAuthStatus();
+      const s = await api.getKiteAuthStatus();
       setAuthStatus(s);
     } catch (e) {
       setLoginMsg(`Error: ${e}`);

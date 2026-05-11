@@ -96,7 +96,7 @@ pub struct KiteConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthStatus {
+pub struct KiteAuthStatus {
     pub is_authenticated: bool,
     pub api_key: Option<String>,
     pub message: String,
@@ -109,7 +109,7 @@ pub struct SavedKiteCredentials {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstrumentInfo {
+pub struct KiteInstrumentInfo {
     pub instrument_token: u32,
     pub tradingsymbol: String,
     pub exchange: String,
