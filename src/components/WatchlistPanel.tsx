@@ -3,7 +3,7 @@ import type { ColorFilteredSymbol, Interval, WatchlistEntry, WatchlistSymbol } f
 import type { SortMode } from "../App";
 import IntervalSelector from "./IntervalSelector";
 
-type DetachedWindowMode = "fib" | "ema" | "sr";
+type DetachedWindowMode = "fib" | "ema" | "sr" | "colorfilter";
 
 type ColorFilterType = 'color' | 'alerts' | 'positions';
 
@@ -204,6 +204,12 @@ export default function WatchlistPanel({
                     onClick={onOpenNews}
                   >
                     📰 News
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenWindow("colorfilter")}
+                  >
+                    🎨 Color Filter
                   </button>
                   <button
                     type="button"

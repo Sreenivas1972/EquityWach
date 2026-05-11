@@ -6,6 +6,7 @@ import BaseChartPanel from "./components/BaseChartPanel";
 import SRChartPanel from "./components/SRChartPanel";
 import EMAChartPanel from "./components/EMAChartPanel";
 import FibChartPanel from "./components/FibChartPanel";
+import ColorFilterPanel from "./components/ColorFilterPanel";
 import NewsPanel from "./components/NewsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
@@ -49,7 +50,7 @@ function sortSymbols(syms: WatchlistSymbol[], mode: SortMode): WatchlistSymbol[]
   });
 }
 
-export type DetachedWindowMode = "fib" | "ema" | "sr";
+export type DetachedWindowMode = "fib" | "ema" | "sr" | "colorfilter";
 
 // Get window mode from URL if present
 const params = new URLSearchParams(window.location.search);
@@ -206,7 +207,7 @@ export default function App() {
 
   const handleOpenWindow = useCallback(
     async (mode: DetachedWindowMode) => {
-      if (!selectedSymbol) {
+      if (mode !== "colorfilter" && !selectedSymbol) {
         return;
       }
 
@@ -216,15 +217,30 @@ export default function App() {
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : `${mode}-${Date.now()}`;
-      const title = mode === "sr" ? "SR Chart" : mode === "fib" ? "Fib Chart" : "EMA Chart";
-      const url = `/?mode=${mode}&symbol=${encodeURIComponent(symbolValue)}&interval=${interval}`;
+      
+      let title: string;
+      let url: string;
+      let width: number;
+      let height: number;
+      
+      if (mode === "colorfilter") {
+        title = "Color Filter";
+        url = `/?mode=${mode}`;
+        width = 320;
+        height = 600;
+      } else {
+        title = mode === "sr" ? "SR Chart" : mode === "fib" ? "Fib Chart" : "EMA Chart";
+        url = `/?mode=${mode}&symbol=${encodeURIComponent(symbolValue!)}&interval=${interval}`;
+        width = 1180;
+        height = 780;
+      }
 
       try {
         const child = new WebviewWindow(`eqw-${mode}-${id}`, {
           title,
           url,
-          width: 1180,
-          height: 780,
+          width,
+          height,
         });
 
         await new Promise<void>((resolve, reject) => {
@@ -254,11 +270,13 @@ export default function App() {
           timeoutId = window.setTimeout(() => finish(resolve), 1500);
         });
 
-        emit(SYMBOL_SYNC_EVENT, {
-          symbol: symbolValue,
-          interval,
-          watchlistName: selectedWatchlist,
-        } satisfies SymbolSyncPayload).catch(() => {});
+        if (mode !== "colorfilter" && symbolValue) {
+          emit(SYMBOL_SYNC_EVENT, {
+            symbol: symbolValue,
+            interval,
+            watchlistName: selectedWatchlist,
+          } satisfies SymbolSyncPayload).catch(() => {});
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setChartError(`Window open failed: ${message}`);
@@ -573,6 +591,8 @@ export default function App() {
         return <EMAChartPanel {...props} />;
       case "fib":
         return <FibChartPanel {...props} />;
+      case "colorfilter":
+        return <ColorFilterPanel />;
       default:
         return <BaseChartPanel {...props} onFetch={handleRefreshChartData} onSelectWatchlist={handleSelectFromSearch} />;
     }
