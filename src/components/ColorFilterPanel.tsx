@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { api } from "../services/tauriApi";
 import type { ColorFilteredSymbol } from "../types";
@@ -54,6 +54,20 @@ export default function ColorFilterPanel() {
   const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  const displaySymbols = useMemo(() => {
+    if (colorFilterType === 'color') {
+      return colorFilteredSymbols;
+    }
+    const seen = new Set<string>();
+    return colorFilteredSymbols.filter(sym => {
+      if (seen.has(sym.symbol)) {
+        return false;
+      }
+      seen.add(sym.symbol);
+      return true;
+    });
+  }, [colorFilteredSymbols, colorFilterType]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -132,13 +146,13 @@ export default function ColorFilterPanel() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       
-      if (event.code === 'Space' && colorFilteredSymbols.length > 0 && selectedSymbol) {
+      if (event.code === 'Space' && displaySymbols.length > 0 && selectedSymbol) {
         event.preventDefault();
         
-        const currentIndex = colorFilteredSymbols.findIndex(s => s.symbol === selectedSymbol);
+        const currentIndex = displaySymbols.findIndex(s => s.symbol === selectedSymbol);
         if (currentIndex !== -1) {
-          const nextIndex = (currentIndex + 1) % colorFilteredSymbols.length;
-          const nextSymbol = colorFilteredSymbols[nextIndex].symbol;
+          const nextIndex = (currentIndex + 1) % displaySymbols.length;
+          const nextSymbol = displaySymbols[nextIndex].symbol;
           handleSelectSymbol(nextSymbol);
         }
       }
@@ -148,7 +162,7 @@ export default function ColorFilterPanel() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [colorFilteredSymbols, selectedSymbol, handleSelectSymbol]);
+  }, [displaySymbols, selectedSymbol, handleSelectSymbol]);
 
   return (
     <div className="color-filter-panel">
@@ -213,26 +227,28 @@ export default function ColorFilterPanel() {
         {isLoading && (
           <div className="symbol-list-loading">Loading symbols…</div>
         )}
-        {!isLoading && colorFilteredSymbols.length === 0 && (colorFilterType !== 'color' || colorFilterValue.color || colorFilterValue.tagColor) && (
+        {!isLoading && displaySymbols.length === 0 && (colorFilterType !== 'color' || colorFilterValue.color || colorFilterValue.tagColor) && (
           <div className="symbol-list-empty">
             {colorFilterType === 'alerts' && 'No symbols with price alerts.'}
             {colorFilterType === 'positions' && 'No symbols with long positions.'}
             {colorFilterType === 'color' && 'No symbols match the filter.'}
           </div>
         )}
-        {colorFilteredSymbols.map((sym) => (
+        {displaySymbols.map((sym) => (
           <button
-            key={`${sym.symbol}-${sym.watchlist_name}`}
+            key={colorFilterType === 'color' ? `${sym.symbol}-${sym.watchlist_name}` : sym.symbol}
             className={`symbol-item${selectedSymbol === sym.symbol ? " active" : ""}`}
             onClick={() => handleSelectSymbol(sym.symbol)}
-            title={`${sym.symbol} (${sym.watchlist_name})`}
+            title={sym.symbol}
             style={{
               borderRight: sym.color ? `10px solid ${getDisplayColor(sym.color)}` : undefined,
               borderLeft: sym.tag_color ? `10px solid ${getDisplayTagColor(sym.tag_color)}` : undefined
             }}
           >
             <span className="symbol-name">{displaySymbol(sym.symbol)}</span>
-            <span className="symbol-watchlist-badge">{sym.watchlist_name}</span>
+            {colorFilterType === 'color' && (
+              <span className="symbol-watchlist-badge">{sym.watchlist_name}</span>
+            )}
           </button>
         ))}
       </div>
