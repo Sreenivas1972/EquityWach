@@ -9,6 +9,17 @@ export type SymbolSyncPayload = {
   watchlistName: string | null;
 };
 
+export const VISITED_SYMBOLS_EVENT = "equitywatcher:visited-symbols";
+
+export type VisitedSymbol = {
+  symbol: string;
+  timestamp: number;
+};
+
+export type VisitedSymbolsPayload = {
+  symbols: VisitedSymbol[];
+};
+
 export function toChartTime(ts: number, interval: Interval): UTCTimestamp | string {
   if (interval === "day" || interval === "week" || interval === "month") {
     const d = new Date(ts * 1000);

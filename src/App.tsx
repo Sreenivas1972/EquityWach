@@ -7,6 +7,7 @@ import SRChartPanel from "./components/SRChartPanel";
 import EMAChartPanel from "./components/EMAChartPanel";
 import FibChartPanel from "./components/FibChartPanel";
 import ColorFilterPanel from "./components/ColorFilterPanel";
+import VisitedSymbolTracker from "./components/VisitedSymbolTracker";
 import NewsPanel from "./components/NewsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import WatchlistPanel from "./components/WatchlistPanel";
@@ -14,7 +15,7 @@ import WatchlistPicker from "./components/WatchlistPicker";
 import { useNews } from "./hooks/useNews";
 import { api } from "./services/tauriApi";
 import type { CandleData, ColorFilteredSymbol, Interval, WatchlistEntry, WatchlistSymbol } from "./types";
-import { SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "./windows/shared";
+import { SYMBOL_SYNC_EVENT, VISITED_SYMBOLS_EVENT, type SymbolSyncPayload, type VisitedSymbol } from "./windows/shared";
 
 // ─── Watchlist sort helpers ───────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ function sortSymbols(syms: WatchlistSymbol[], mode: SortMode): WatchlistSymbol[]
   });
 }
 
-export type DetachedWindowMode = "fib" | "ema" | "sr" | "colorfilter";
+export type DetachedWindowMode = "fib" | "ema" | "sr" | "colorfilter" | "visited";
 
 // Get window mode from URL if present
 const params = new URLSearchParams(window.location.search);
@@ -90,6 +91,8 @@ export default function App() {
   const [colorFilterType, setColorFilterType] = useState<'color' | 'alerts' | 'positions'>('color');
   const [colorFilteredSymbols, setColorFilteredSymbols] = useState<ColorFilteredSymbol[]>([]);
   const [isLoadingColorFilter, setIsLoadingColorFilter] = useState(false);
+
+  const [visitedSymbols, setVisitedSymbols] = useState<VisitedSymbol[]>([]);
 
   const { isLoading: isLoadingNews, error: newsError, getNewsForSymbol } = useNews(
     colorFilterMode ? colorFilteredSymbols : sortedSymbols,
@@ -223,8 +226,8 @@ export default function App() {
       let width: number;
       let height: number;
       
-      if (mode === "colorfilter") {
-        title = "Color Filter";
+      if (mode === "colorfilter" || mode === "visited") {
+        title = mode === "colorfilter" ? "Color Filter" : "Visited Symbols";
         url = `/?mode=${mode}`;
         width = 320;
         height = 600;
@@ -270,7 +273,9 @@ export default function App() {
           timeoutId = window.setTimeout(() => finish(resolve), 1500);
         });
 
-        if (mode !== "colorfilter" && symbolValue) {
+        if (mode === "visited") {
+          emit(VISITED_SYMBOLS_EVENT, visitedSymbols).catch(() => {});
+        } else if (mode !== "colorfilter" && symbolValue) {
           emit(SYMBOL_SYNC_EVENT, {
             symbol: symbolValue,
             interval,
@@ -282,7 +287,7 @@ export default function App() {
         setChartError(`Window open failed: ${message}`);
       }
     },
-    [selectedSymbol, interval, selectedWatchlist]
+    [selectedSymbol, interval, selectedWatchlist, visitedSymbols]
   );
 
   useEffect(() => {
@@ -396,6 +401,15 @@ export default function App() {
     (sym: string) => {
       setSelectedSymbol(sym);
       api.setLastSelection(selectedWatchlist, sym, interval).catch(() => {});
+      
+      setVisitedSymbols(prev => {
+        if (prev.some(s => s.symbol === sym)) {
+          return prev;
+        }
+        const updated = [...prev, { symbol: sym, timestamp: Date.now() }];
+        emit(VISITED_SYMBOLS_EVENT, updated).catch(() => {});
+        return updated;
+      });
     },
     [selectedWatchlist, interval]
   );
@@ -493,7 +507,7 @@ export default function App() {
     [interval]
   );
 
-  // Keyboard navigation: spacebar to next symbol
+  // Keyboard navigation: spacebar to next symbol (skips visited symbols)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
@@ -505,11 +519,24 @@ export default function App() {
       if (event.code === 'Space' && currentSymbols.length > 0 && selectedSymbol) {
         event.preventDefault();
         
+        const visitedSet = new Set(visitedSymbols.map(s => s.symbol));
         const currentIndex = currentSymbols.findIndex(s => s.symbol === selectedSymbol);
+        
         if (currentIndex !== -1) {
-          const nextIndex = (currentIndex + 1) % currentSymbols.length;
-          const nextSymbol = currentSymbols[nextIndex].symbol;
-          handleSelectSymbol(nextSymbol);
+          let nextIndex = (currentIndex + 1) % currentSymbols.length;
+          let attempts = 0;
+          
+          while (attempts < currentSymbols.length) {
+            const candidateSymbol = currentSymbols[nextIndex].symbol;
+            
+            if (!visitedSet.has(candidateSymbol) || candidateSymbol === selectedSymbol) {
+              handleSelectSymbol(candidateSymbol);
+              break;
+            }
+            
+            nextIndex = (nextIndex + 1) % currentSymbols.length;
+            attempts++;
+          }
         }
       }
     };
@@ -518,7 +545,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sortedSymbols, colorFilteredSymbols, colorFilterMode, selectedSymbol, handleSelectSymbol]);
+  }, [sortedSymbols, colorFilteredSymbols, colorFilterMode, selectedSymbol, handleSelectSymbol, visitedSymbols]);
 
   // Keyboard shortcut: Cmd+M to open watchlist picker
   useEffect(() => {
@@ -593,6 +620,8 @@ export default function App() {
         return <FibChartPanel {...props} />;
       case "colorfilter":
         return <ColorFilterPanel />;
+      case "visited":
+        return <VisitedSymbolTracker />;
       default:
         return <BaseChartPanel {...props} onFetch={handleRefreshChartData} onSelectWatchlist={handleSelectFromSearch} />;
     }
@@ -604,6 +633,8 @@ export default function App() {
         <SettingsPanel onClose={handleCloseSettings} />
       ) : mode === "colorfilter" ? (
         <ColorFilterPanel />
+      ) : mode === "visited" ? (
+        <VisitedSymbolTracker />
       ) : (
         <div className="chart-layout">
           <div className="chart-pane">
