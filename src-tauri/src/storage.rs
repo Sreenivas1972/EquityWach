@@ -104,12 +104,19 @@ pub fn open_db() -> SqlResult<Connection> {
         CREATE TABLE IF NOT EXISTS watchlist_symbols (
             watchlist_id INTEGER NOT NULL,
             symbol       TEXT    NOT NULL,
-            color        TEXT,
-            tag_color    TEXT,
             FOREIGN KEY (watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
             PRIMARY KEY (watchlist_id, symbol)
         );
         CREATE INDEX IF NOT EXISTS idx_watchlist_symbols_watchlist_id ON watchlist_symbols(watchlist_id);
+
+        CREATE TABLE IF NOT EXISTS symbols_colors (
+            symbol       TEXT    NOT NULL,
+            color        TEXT,
+            tag_color    TEXT,
+            PRIMARY KEY (symbol)
+        );
+        CREATE INDEX IF NOT EXISTS idx_symbols_colors_id ON symbols_colors(symbol);
+        
         CREATE TABLE IF NOT EXISTS pivot_meta (
             symbol       TEXT    NOT NULL,
             pivot_type   TEXT    NOT NULL,
@@ -171,54 +178,6 @@ pub fn open_db() -> SqlResult<Connection> {
         ",
     )?;
     
-    // Migration: Add color column to watchlist_symbols if it doesn't exist
-    let has_color_column = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('watchlist_symbols') WHERE name='color'")?
-        .query_row([], |row| row.get::<_, i64>(0))? > 0;
-    
-    if !has_color_column {
-        conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN color TEXT", [])?;
-    }
-    
-    // Migration: Add tag_color column to watchlist_symbols if it doesn't exist
-    let has_tag_color_column = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('watchlist_symbols') WHERE name='tag_color'")?
-        .query_row([], |row| row.get::<_, i64>(0))? > 0;
-        
-    if !has_tag_color_column {
-        conn.execute("ALTER TABLE watchlist_symbols ADD COLUMN tag_color TEXT", [])?;
-    }
-
-    // Migration: Add last_accessed to sr_drawings
-    let has_sr_last_accessed = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('sr_drawings') WHERE name='last_accessed'")?
-        .query_row([], |row| row.get::<_, i64>(0))? > 0;
-
-    if !has_sr_last_accessed {
-        conn.execute("ALTER TABLE sr_drawings ADD COLUMN last_accessed INTEGER", [])?;
-        // Backfill with updated_at so existing drawings are not immediately pruned
-        conn.execute("UPDATE sr_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
-    }
-
-    // Migration: Add last_accessed to fib_drawings
-    let has_fib_last_accessed = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('fib_drawings') WHERE name='last_accessed'")?
-        .query_row([], |row| row.get::<_, i64>(0))? > 0;
-
-    if !has_fib_last_accessed {
-        conn.execute("ALTER TABLE fib_drawings ADD COLUMN last_accessed INTEGER", [])?;
-        // Backfill with updated_at so existing drawings are not immediately pruned
-        conn.execute("UPDATE fib_drawings SET last_accessed = updated_at WHERE last_accessed IS NULL", [])?;
-    }
-
-    // Migration: Add panel_type to chart_notes
-    let has_panel_type = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chart_notes') WHERE name='panel_type'")?
-        .query_row([], |row| row.get::<_, i64>(0))? > 0;
-
-    if !has_panel_type {
-        conn.execute("ALTER TABLE chart_notes ADD COLUMN panel_type TEXT NOT NULL DEFAULT 'base'", [])?;
-    }
 
     Ok(conn)
 }
@@ -707,12 +666,20 @@ pub fn save_watchlist(name: &str, symbols: &[crate::models::WatchlistSymbol]) ->
         params![watchlist_id],
     ).map_err(|e| e.to_string())?;
     
-    // Insert new symbols with colors
+    // Insert new symbols and save colors to symbols_colors table
     for symbol in symbols {
         conn.execute(
-            "INSERT INTO watchlist_symbols (watchlist_id, symbol, color, tag_color) VALUES (?1, ?2, ?3, ?4)",
-            params![watchlist_id, symbol.symbol.to_uppercase(), symbol.color, symbol.tag_color],
+            "INSERT INTO watchlist_symbols (watchlist_id, symbol) VALUES (?1, ?2)",
+            params![watchlist_id, symbol.symbol.to_uppercase()],
         ).map_err(|e| e.to_string())?;
+        
+        // Save/update colors to symbols_colors table
+        if symbol.color.is_some() || symbol.tag_color.is_some() {
+            conn.execute(
+                "INSERT OR REPLACE INTO symbols_colors (symbol, color, tag_color) VALUES (?1, ?2, ?3)",
+                params![symbol.symbol.to_uppercase(), symbol.color, symbol.tag_color],
+            ).map_err(|e| e.to_string())?;
+        }
     }
     
     Ok(())
@@ -721,8 +688,10 @@ pub fn save_watchlist(name: &str, symbols: &[crate::models::WatchlistSymbol]) ->
 pub fn load_watchlist_symbols(watchlist_name: &str) -> Result<Vec<crate::models::WatchlistSymbol>, String> {
     let conn = open_db().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT ws.symbol, ws.color, ws.tag_color FROM watchlist_symbols ws 
+        "SELECT ws.symbol, sc.color, sc.tag_color 
+         FROM watchlist_symbols ws 
          JOIN watchlists w ON ws.watchlist_id = w.id 
+         LEFT JOIN symbols_colors sc ON ws.symbol = sc.symbol
          WHERE w.name = ?1 ORDER BY ws.symbol"
     ).map_err(|e| e.to_string())?;
     
@@ -738,24 +707,36 @@ pub fn load_watchlist_symbols(watchlist_name: &str) -> Result<Vec<crate::models:
     symbols.map_err(|e| e.to_string())
 }
 
-pub fn update_symbol_color(watchlist_name: &str, symbol: &str, color: Option<&str>) -> Result<(), String> {
+pub fn update_symbol_color(_watchlist_name: &str, symbol: &str, color: Option<&str>) -> Result<(), String> {
     let conn = open_db().map_err(|e| e.to_string())?;
+    
+    // Get existing tag_color from symbols_colors
+    let existing_tag_color: Option<String> = conn.query_row(
+        "SELECT tag_color FROM symbols_colors WHERE symbol = ?1",
+        params![symbol.to_uppercase()],
+        |row| row.get(0),
+    ).unwrap_or(None);
+    
     conn.execute(
-        "UPDATE watchlist_symbols SET color = ?1 
-         WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?2) 
-         AND symbol = ?3",
-        params![color, watchlist_name, symbol.to_uppercase()],
+        "INSERT OR REPLACE INTO symbols_colors (symbol, color, tag_color) VALUES (?1, ?2, ?3)",
+        params![symbol.to_uppercase(), color, existing_tag_color],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn update_symbol_tag_color(watchlist_name: &str, symbol: &str, tag_color: Option<&str>) -> Result<(), String> {
+pub fn update_symbol_tag_color(_watchlist_name: &str, symbol: &str, tag_color: Option<&str>) -> Result<(), String> {
     let conn = open_db().map_err(|e| e.to_string())?;
+    
+    // Get existing color from symbols_colors
+    let existing_color: Option<String> = conn.query_row(
+        "SELECT color FROM symbols_colors WHERE symbol = ?1",
+        params![symbol.to_uppercase()],
+        |row| row.get(0),
+    ).unwrap_or(None);
+    
     conn.execute(
-        "UPDATE watchlist_symbols SET tag_color = ?1 
-         WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = ?2) 
-         AND symbol = ?3",
-        params![tag_color, watchlist_name, symbol.to_uppercase()],
+        "INSERT OR REPLACE INTO symbols_colors (symbol, color, tag_color) VALUES (?1, ?2, ?3)",
+        params![symbol.to_uppercase(), existing_color, tag_color],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -785,7 +766,7 @@ pub fn add_symbol_to_watchlist(watchlist_name: &str, symbol: &str) -> Result<(),
         return Err(format!("Watchlist '{}' not found", watchlist_name));
     }
     
-    // Check if symbol already exists
+    // Check if symbol already exists in this watchlist
     let already_exists: bool = conn.query_row(
         "SELECT EXISTS(
             SELECT 1 FROM watchlist_symbols ws
@@ -802,8 +783,8 @@ pub fn add_symbol_to_watchlist(watchlist_name: &str, symbol: &str) -> Result<(),
     
     // Insert the symbol
     conn.execute(
-        "INSERT INTO watchlist_symbols (watchlist_id, symbol, color, tag_color)
-         VALUES ((SELECT id FROM watchlists WHERE name = ?1), ?2, NULL, NULL)",
+        "INSERT INTO watchlist_symbols (watchlist_id, symbol)
+         VALUES ((SELECT id FROM watchlists WHERE name = ?1), ?2)",
         params![watchlist_name, symbol.to_uppercase()],
     ).map_err(|e| e.to_string())?;
     
@@ -1162,11 +1143,12 @@ pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Res
             let tag_placeholders: Vec<String> = tag_values.iter().map(|_| "?".to_string()).collect();
             
             let sql = format!(
-                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                "SELECT ws.symbol, w.name, sc.color, sc.tag_color 
                  FROM watchlist_symbols ws 
                  JOIN watchlists w ON ws.watchlist_id = w.id 
-                 WHERE ws.color IN ({}) 
-                 AND ws.tag_color IN ({})
+                 LEFT JOIN symbols_colors sc ON ws.symbol = sc.symbol
+                 WHERE sc.color IN ({}) 
+                 AND sc.tag_color IN ({})
                  ORDER BY ws.symbol",
                 color_placeholders.join(","),
                 tag_placeholders.join(",")
@@ -1200,10 +1182,11 @@ pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Res
             let placeholders: Vec<String> = color_values.iter().map(|_| "?".to_string()).collect();
             
             let sql = format!(
-                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                "SELECT ws.symbol, w.name, sc.color, sc.tag_color 
                  FROM watchlist_symbols ws 
                  JOIN watchlists w ON ws.watchlist_id = w.id 
-                 WHERE ws.color IN ({}) 
+                 LEFT JOIN symbols_colors sc ON ws.symbol = sc.symbol
+                 WHERE sc.color IN ({}) 
                  ORDER BY ws.symbol",
                 placeholders.join(",")
             );
@@ -1233,10 +1216,11 @@ pub fn get_symbols_by_color(color: Option<&str>, tag_color: Option<&str>) -> Res
             let placeholders: Vec<String> = tag_values.iter().map(|_| "?".to_string()).collect();
             
             let sql = format!(
-                "SELECT ws.symbol, w.name, ws.color, ws.tag_color 
+                "SELECT ws.symbol, w.name, sc.color, sc.tag_color 
                  FROM watchlist_symbols ws 
                  JOIN watchlists w ON ws.watchlist_id = w.id 
-                 WHERE ws.tag_color IN ({}) 
+                 LEFT JOIN symbols_colors sc ON ws.symbol = sc.symbol
+                 WHERE sc.tag_color IN ({}) 
                  ORDER BY ws.symbol",
                 placeholders.join(",")
             );
@@ -1272,10 +1256,11 @@ pub fn get_symbols_with_alerts() -> Result<Vec<crate::models::ColorFilteredSymbo
     let conn = open_db().map_err(|e| e.to_string())?;
     
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT pa.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+        "SELECT DISTINCT pa.symbol, COALESCE(w.name, ''), sc.color, sc.tag_color 
          FROM price_alerts pa 
          LEFT JOIN watchlist_symbols ws ON pa.symbol = ws.symbol 
          LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         LEFT JOIN symbols_colors sc ON pa.symbol = sc.symbol
          ORDER BY pa.symbol"
     ).map_err(|e| e.to_string())?;
     
@@ -1302,10 +1287,11 @@ pub fn get_symbols_with_positions() -> Result<Vec<crate::models::ColorFilteredSy
     let conn = open_db().map_err(|e| e.to_string())?;
     
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT lp.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+        "SELECT DISTINCT lp.symbol, COALESCE(w.name, ''), sc.color, sc.tag_color 
          FROM long_positions lp 
          LEFT JOIN watchlist_symbols ws ON lp.symbol = ws.symbol 
          LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         LEFT JOIN symbols_colors sc ON lp.symbol = sc.symbol
          ORDER BY lp.symbol"
     ).map_err(|e| e.to_string())?;
     
@@ -1334,10 +1320,11 @@ pub fn get_symbols_by_hashtag(hashtag: &str) -> Result<Vec<crate::models::ColorF
     let search_tag = format!("#{}", hashtag);
     
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT cn.symbol, COALESCE(w.name, ''), ws.color, ws.tag_color 
+        "SELECT DISTINCT cn.symbol, COALESCE(w.name, ''), sc.color, sc.tag_color 
          FROM chart_notes cn 
          LEFT JOIN watchlist_symbols ws ON cn.symbol = ws.symbol 
          LEFT JOIN watchlists w ON ws.watchlist_id = w.id 
+         LEFT JOIN symbols_colors sc ON cn.symbol = sc.symbol
          WHERE cn.note_text LIKE ?1
          ORDER BY cn.symbol"
     ).map_err(|e| e.to_string())?;
