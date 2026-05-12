@@ -163,6 +163,7 @@ export default function FibChartPanel({
         horzLines: { visible: false },
       },
       crosshair: {
+        mode: 1,
         vertLine: { color: "#2563eb", width: 1, style: 2 },
         horzLine: { color: "#2563eb", width: 1, style: 2 },
       },
@@ -374,7 +375,7 @@ export default function FibChartPanel({
       // Base trend line
       const baseLine = chart.addSeries(LineSeries, {
         color: "#7c3aed",
-        lineWidth: 2,
+        lineWidth: 3,
         lineStyle: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -401,7 +402,7 @@ export default function FibChartPanel({
           const value = anchorC.price + trendRange * level.ratio;
           const line = chart.addSeries(LineSeries, {
             color: level.color,
-            lineWidth: 1,
+            lineWidth: 2,
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
@@ -439,7 +440,7 @@ export default function FibChartPanel({
           const value = drawing.anchorB.price + trendRange * level.ratio;
           const line = chart.addSeries(LineSeries, {
             color: level.color,
-            lineWidth: 1,
+            lineWidth: 2,
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,
@@ -485,7 +486,7 @@ export default function FibChartPanel({
           const value = high - (high - low) * level.ratio;
           const line = chart.addSeries(LineSeries, {
             color: level.color,
-            lineWidth: 1,
+            lineWidth: 2,
             lineStyle: 2,
             priceLineVisible: false,
             lastValueVisible: false,

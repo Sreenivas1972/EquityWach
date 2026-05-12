@@ -164,6 +164,7 @@ function BaseChartPanelComponent({
         horzLines: { visible: false },
       },
       crosshair: {
+        mode: 1,
         vertLine: { color: "#2563eb", width: 1, style: 2 },
         horzLine: { color: "#2563eb", width: 1, style: 2 },
       },
