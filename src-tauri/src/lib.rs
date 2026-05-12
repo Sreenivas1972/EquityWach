@@ -4,7 +4,7 @@ mod models;
 mod storage;
 mod watchlists;
 
-use models::{ChartDataResponse, ChartNote, ColorFilteredSymbol, FetchSettings, LastSelection, LongPosition, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
+use models::{ChartDataResponse, ChartNote, ColorFilteredSymbol, EMASettings, FetchSettings, LastSelection, LongPosition, NewsResponse, PivotSource, PriceAlert, RetentionSettings, SymbolSearchResult};
 use tauri::Emitter;
 
 // ─── Watchlist commands ───────────────────────────────────────────────────────
@@ -152,6 +152,16 @@ fn get_fetch_settings() -> FetchSettings {
 #[tauri::command]
 fn update_fetch_settings(settings: FetchSettings) -> Result<(), String> {
     storage::save_fetch_settings(&settings)
+}
+
+#[tauri::command]
+fn get_ema_settings() -> EMASettings {
+    storage::load_ema_settings()
+}
+
+#[tauri::command]
+fn update_ema_settings(settings: EMASettings) -> Result<(), String> {
+    storage::save_ema_settings(&settings)
 }
 
 // ─── Upstox auth ──────────────────────────────────────────────────────────────
@@ -483,6 +493,8 @@ pub fn run() {
             update_retention_settings,
             get_fetch_settings,
             update_fetch_settings,
+            get_ema_settings,
+            update_ema_settings,
             get_upstox_auth_status,
             save_upstox_credentials,
             get_saved_upstox_credentials,

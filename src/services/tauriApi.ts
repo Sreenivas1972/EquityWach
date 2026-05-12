@@ -4,6 +4,7 @@ import type {
   ChartDataResponse,
   ChartNote,
   ColorFilteredSymbol,
+  EMASettings,
   FetchSettings,
   LastSelection,
   LongPosition,
@@ -94,6 +95,12 @@ export const api = {
 
   updateFetchSettings: (settings: FetchSettings) =>
     invoke<void>("update_fetch_settings", { settings }),
+
+  // ── EMA settings ─────────────────────────────────────────────────────────────
+  getEMASettings: () => invoke<EMASettings>("get_ema_settings"),
+
+  updateEMASettings: (settings: EMASettings) =>
+    invoke<void>("update_ema_settings", { settings }),
 
   // ── Upstox auth ─────────────────────────────────────────────────────────────
   getUpstoxAuthStatus: () => invoke<UpstoxAuthStatus>("get_upstox_auth_status"),

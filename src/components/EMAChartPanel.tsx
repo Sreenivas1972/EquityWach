@@ -1,13 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries,
   createChart,
   LineSeries,
   UTCTimestamp,
 } from "lightweight-charts";
-import type { CandleData, Interval } from "../types";
+import type { CandleData, EMASettings, Interval } from "../types";
 import { toChartTime } from "../windows/shared";
+import { api } from "../services/tauriApi";
 import ChartNotes from "./ChartNotes";
+import EMASettingsComponent from "./EMASettings";
 
 interface Props {
   symbol: string | null;
@@ -18,6 +20,15 @@ interface Props {
   lastSync: string | null;
   warning: string | null;
 }
+
+const DEFAULT_EMA_SETTINGS: EMASettings = {
+  ema1_period: 20,
+  ema2_period: 50,
+  ema3_period: 200,
+  ema1_color: "#f08c00",
+  ema2_color: "#228be6",
+  ema3_color: "#c2255c",
+};
 
 export default function EMAChartPanel({
   symbol,
@@ -34,11 +45,20 @@ export default function EMAChartPanel({
     ReturnType<typeof createChart>["addSeries"]
   > | null>(null);
   const emaSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>>>({});
+  const [emaSettings, setEMASettings] = useState<EMASettings>(DEFAULT_EMA_SETTINGS);
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsVersionRef = useRef(0);
 
-  // ── Create chart once ────────────────────────────────────────────────────
+  useEffect(() => {
+    api.getEMASettings()
+      .then(setEMASettings)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
+    const currentVersion = ++settingsVersionRef.current;
 
     const chart = createChart(el, {
       width: el.clientWidth,
@@ -76,24 +96,28 @@ export default function EMAChartPanel({
       wickDownColor: "#f85149",
     });
 
-    // Add EMA lines
-    const emaColors = {
-      ema20: "#f08c00",
-      ema50: "#228be6",
-      ema200: "#c2255c",
-    };
+    const emaConfig = [
+      { key: "ema1", period: emaSettings.ema1_period, color: emaSettings.ema1_color },
+      { key: "ema2", period: emaSettings.ema2_period, color: emaSettings.ema2_color },
+      { key: "ema3", period: emaSettings.ema3_period, color: emaSettings.ema3_color },
+    ];
 
     const emaLines: Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>> = {};
-    Object.entries(emaColors).forEach(([key, color]) => {
+    emaConfig.forEach(({ key, period, color }) => {
       emaLines[key] = chart.addSeries(LineSeries, {
         color,
         lineWidth: 2,
         lineStyle: 0,
         priceLineVisible: false,
         lastValueVisible: true,
-        title: key.toUpperCase(),
+        title: `EMA${period}`,
       });
     });
+
+    if (currentVersion !== settingsVersionRef.current) {
+      chart.remove();
+      return;
+    }
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -115,9 +139,8 @@ export default function EMAChartPanel({
       seriesRef.current = null;
       emaSeriesRef.current = {};
     };
-  }, []);
+  }, [emaSettings]);
 
-  // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current) return;
     if (candles.length === 0) {
@@ -135,20 +158,29 @@ export default function EMAChartPanel({
 
     seriesRef.current.setData(formatted as Parameters<typeof seriesRef.current.setData>[0]);
 
-    // Calculate and display EMA lines
     const closePrices = candles.map((c) => c.close);
-    const ema20 = calculateEMA(closePrices, 20);
-    const ema50 = calculateEMA(closePrices, 50);
-    const ema200 = calculateEMA(closePrices, 200);
+    const ema1 = calculateEMA(closePrices, emaSettings.ema1_period);
+    const ema2 = calculateEMA(closePrices, emaSettings.ema2_period);
+    const ema3 = calculateEMA(closePrices, emaSettings.ema3_period);
 
-    const ema20Data = formatEMALine(formatted, ema20);
-    const ema50Data = formatEMALine(formatted, ema50);
-    const ema200Data = formatEMALine(formatted, ema200);
+    const ema1Data = formatEMALine(formatted, ema1);
+    const ema2Data = formatEMALine(formatted, ema2);
+    const ema3Data = formatEMALine(formatted, ema3);
 
-    emaSeriesRef.current.ema20.setData(ema20Data as Parameters<typeof emaSeriesRef.current.ema20.setData>[0]);
-    emaSeriesRef.current.ema50.setData(ema50Data as Parameters<typeof emaSeriesRef.current.ema50.setData>[0]);
-    emaSeriesRef.current.ema200.setData(ema200Data as Parameters<typeof emaSeriesRef.current.ema200.setData>[0]);
-  }, [candles, interval]);
+    if (emaSeriesRef.current.ema1) {
+      emaSeriesRef.current.ema1.setData(ema1Data as Parameters<typeof emaSeriesRef.current.ema1.setData>[0]);
+    }
+    if (emaSeriesRef.current.ema2) {
+      emaSeriesRef.current.ema2.setData(ema2Data as Parameters<typeof emaSeriesRef.current.ema2.setData>[0]);
+    }
+    if (emaSeriesRef.current.ema3) {
+      emaSeriesRef.current.ema3.setData(ema3Data as Parameters<typeof emaSeriesRef.current.ema3.setData>[0]);
+    }
+  }, [candles, interval, emaSettings]);
+
+  function handleSettingsSave(newSettings: EMASettings) {
+    setEMASettings(newSettings);
+  }
 
   const freshnessLabel: Record<string, { text: string; color: string }> = {
     network_fetched: { text: "Live", color: "#3fb950" },
@@ -162,7 +194,6 @@ export default function EMAChartPanel({
 
   return (
     <div className="chart-panel">
-      {/* Header bar */}
       <div className="chart-header">
         <span className="chart-symbol">{symbol ?? "Select a symbol"}</span>
         <span className="chart-interval-badge">{interval.toUpperCase()}</span>
@@ -175,16 +206,21 @@ export default function EMAChartPanel({
         {syncAge && (
           <span className="chart-sync-age">Last sync: {syncAge}</span>
         )}
+        <button
+          className="chart-ema-settings-btn"
+          onClick={() => setShowSettings(true)}
+          title="EMA Settings"
+        >
+          ⚙
+        </button>
       </div>
 
-      {/* Warning banner */}
       {warning && (
         <div className="chart-warning">
           ⚠ {warning}
         </div>
       )}
 
-      {/* Chart area */}
       <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
         <ChartNotes
           symbol={symbol}
@@ -210,12 +246,16 @@ export default function EMAChartPanel({
           </div>
         )}
       </div>
+
+      {showSettings && (
+        <EMASettingsComponent
+          onClose={() => setShowSettings(false)}
+          onSave={handleSettingsSave}
+        />
+      )}
     </div>
   );
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 
 function formatAge(isoString: string): string {
   try {

@@ -4,7 +4,7 @@ use chrono::{Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, Result as SqlResult};
 
 use crate::models::{
-    CandleData, FetchSettings, UpstoxInstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
+    CandleData, EMASettings, FetchSettings, UpstoxInstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
     WatchlistEntry,
 };
 
@@ -40,6 +40,9 @@ fn upstox_config_path() -> PathBuf {
 }
 fn fetch_settings_path() -> PathBuf {
     get_app_data_dir().join("fetch_settings.json")
+}
+fn ema_settings_path() -> PathBuf {
+    get_app_data_dir().join("ema_settings.json")
 }
 
 // ─── Database ────────────────────────────────────────────────────────────────
@@ -627,6 +630,14 @@ pub fn load_fetch_settings() -> FetchSettings {
 
 pub fn save_fetch_settings(s: &FetchSettings) -> Result<(), String> {
     write_json(&fetch_settings_path(), s)
+}
+
+pub fn load_ema_settings() -> EMASettings {
+    read_json(&ema_settings_path()).unwrap_or_default()
+}
+
+pub fn save_ema_settings(s: &EMASettings) -> Result<(), String> {
+    write_json(&ema_settings_path(), s)
 }
 
 // ─── Watchlists ──────────────────────────────────────────────────────────────

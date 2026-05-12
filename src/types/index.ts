@@ -125,3 +125,12 @@ export interface ChartNote {
   pos_y: number | null;
   created_at: string;
 }
+
+export interface EMASettings {
+  ema1_period: number;
+  ema2_period: number;
+  ema3_period: number;
+  ema1_color: string;
+  ema2_color: string;
+  ema3_color: string;
+}

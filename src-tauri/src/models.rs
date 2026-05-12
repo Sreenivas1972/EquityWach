@@ -187,3 +187,26 @@ pub struct ChartNote {
     pub pos_y: Option<f64>,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EMASettings {
+    pub ema1_period: u32,
+    pub ema2_period: u32,
+    pub ema3_period: u32,
+    pub ema1_color: String,
+    pub ema2_color: String,
+    pub ema3_color: String,
+}
+
+impl Default for EMASettings {
+    fn default() -> Self {
+        EMASettings {
+            ema1_period: 20,
+            ema2_period: 50,
+            ema3_period: 200,
+            ema1_color: "#f08c00".to_string(),
+            ema2_color: "#228be6".to_string(),
+            ema3_color: "#c2255c".to_string(),
+        }
+    }
+}
