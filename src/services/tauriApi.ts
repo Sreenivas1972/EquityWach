@@ -6,6 +6,7 @@ import type {
   ColorFilteredSymbol,
   EMASettings,
   FetchSettings,
+  FibToolDefaults,
   LastSelection,
   LongPosition,
   NewsResponse,
@@ -101,6 +102,12 @@ export const api = {
 
   updateEMASettings: (settings: EMASettings) =>
     invoke<void>("update_ema_settings", { settings }),
+
+  // ── Fib settings ─────────────────────────────────────────────────────────────
+  getFibSettings: () => invoke<FibToolDefaults>("get_fib_settings"),
+
+  updateFibSettings: (settings: FibToolDefaults) =>
+    invoke<void>("update_fib_settings", { settings }),
 
   // ── Upstox auth ─────────────────────────────────────────────────────────────
   getUpstoxAuthStatus: () => invoke<UpstoxAuthStatus>("get_upstox_auth_status"),

@@ -6,10 +6,12 @@ import {
   LineSeries,
 } from "lightweight-charts";
 import { api } from "../services/tauriApi";
-import type { CandleData, Interval } from "../types";
+import type { CandleData, FibToolDefaults, Interval } from "../types";
 import { toChartTime, SYMBOL_SYNC_EVENT, type SymbolSyncPayload } from "../windows/shared";
+import { DEFAULT_FIB_TOOL_DEFAULTS, loadFibSettings } from "../utils/fibSettingsUtils";
 import IntervalSelector from "./IntervalSelector";
 import ChartNotes from "./ChartNotes";
+import FibSettingsWindow from "./FibSettingsWindow";
 
 type FibAnchor = {
   time: number;
@@ -21,28 +23,44 @@ type FibDrawing = {
   type: 'retracement' | 'extension' | 'projection';
   anchorA: FibAnchor;
   anchorB: FibAnchor;
-  anchorC?: FibAnchor; // Only for extensions and projections
+  anchorC?: FibAnchor;
   extendRight?: boolean;
   extendToBars?: number;
 };
 
-const FIB_RETRACEMENT_LEVELS = [
-  { key: "fib_100", label: "100%", ratio: 0, color: "#c2255c" },
-  { key: "fib_786", label: "78.6%", ratio: 0.236, color: "#d9480f" },
-  { key: "fib_618", label: "61.8%", ratio: 0.382, color: "#f08c00" },
-  { key: "fib_50", label: "50%", ratio: 0.5, color: "#fab005" },
-  { key: "fib_382", label: "38.2%", ratio: 0.618, color: "#ffd43b" },
-  { key: "fib_236", label: "23.6%", ratio: 0.786, color: "#40c057" },
-  { key: "fib_0", label: "0%", ratio: 1, color: "#087f5b" },
-];
+interface FibLevelConfig {
+  key: string;
+  label: string;
+  ratio: number;
+  color: string;
+}
 
-const FIB_EXTENSION_LEVELS = [
-  { key: "fib_0", label: "0%", ratio: 0, color: "#087f5b" },
-  { key: "fib_100", label: "100%", ratio: 1, color: "#c2255c" },
-  { key: "fib_161", label: "161.8%", ratio: 1.618, color: "#d9480f" },
-  { key: "fib_261", label: "261.8%", ratio: 2.618, color: "#f08c00" },
-  { key: "fib_423", label: "423.6%", ratio: 4.236, color: "#fab005" },
-];
+function buildFibLevelConfig(defaults: FibToolDefaults): {
+  retracement: FibLevelConfig[];
+  extension: FibLevelConfig[];
+  projection: FibLevelConfig[];
+} {
+  return {
+    retracement: defaults.retracement.map((l, i) => ({
+      key: `fib_${i}`,
+      label: `${(l.value * 100).toFixed(1)}%`.replace(/\.0%$/, '%'),
+      ratio: l.value,
+      color: l.color,
+    })),
+    extension: defaults.extension.map((l, i) => ({
+      key: `fib_ext_${i}`,
+      label: `${(l.value * 100).toFixed(1)}%`.replace(/\.0%$/, '%'),
+      ratio: l.value,
+      color: l.color,
+    })),
+    projection: defaults.projection.map((l, i) => ({
+      key: `fib_proj_${i}`,
+      label: `${(l.value * 100).toFixed(1)}%`.replace(/\.0%$/, '%'),
+      ratio: l.value,
+      color: l.color,
+    })),
+  };
+}
 
 interface Props {
   symbol: string | null;
@@ -67,15 +85,21 @@ export default function FibChartPanel({
   const [interval, setInterval] = useState<Interval>(initialInterval);
   const [candles, setCandles] = useState<CandleData[]>(initialCandles);
   const [linkInterval, setLinkInterval] = useState(true);
+  const [fibSettings, setFibSettings] = useState<FibToolDefaults>(DEFAULT_FIB_TOOL_DEFAULTS);
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Sync candles from parent when interval is linked
+  useEffect(() => {
+    loadFibSettings().then(setFibSettings).catch(() => {});
+  }, []);
+
+  const fibLevels = buildFibLevelConfig(fibSettings);
+
   useEffect(() => {
     if (linkInterval) {
       setCandles(initialCandles);
     }
   }, [initialCandles, linkInterval]);
 
-  // Listen for symbol sync events
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 
@@ -102,7 +126,6 @@ export default function FibChartPanel({
     };
   }, [symbol, interval, linkInterval]);
 
-  // Load candles when interval is not linked
   useEffect(() => {
     if (linkInterval || !symbol) {
       return;
@@ -129,6 +152,7 @@ export default function FibChartPanel({
       cancelled = true;
     };
   }, [symbol, interval, linkInterval]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<ReturnType<
@@ -137,7 +161,7 @@ export default function FibChartPanel({
   const manualFibSeriesRef = useRef<Record<string, ReturnType<ReturnType<typeof createChart>["addSeries"]>[]>>({});
 
   const [fibDrawings, setFibDrawings] = useState<FibDrawing[]>([]);
-    const [showDrawings, setShowDrawings] = useState(false);
+  const [showDrawings, setShowDrawings] = useState(false);
   const [drawingMode, setDrawingMode] = useState<'retracement' | 'extension' | 'projection' | null>(null);
   const [anchorA, setAnchorA] = useState<FibAnchor | null>(null);
   const [anchorB, setAnchorB] = useState<FibAnchor | null>(null);
@@ -146,7 +170,6 @@ export default function FibChartPanel({
     anchorKey: 'anchorA' | 'anchorB' | 'anchorC';
   } | null>(null);
 
-  // ── Create chart once ────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -260,7 +283,6 @@ export default function FibChartPanel({
         price,
       };
 
-      // 1. Drop a moving endpoint
       if (movingEndpoint) {
         const nextDrawings = fibDrawings.map((d) => 
           d.id === movingEndpoint.drawingId 
@@ -275,7 +297,6 @@ export default function FibChartPanel({
         return;
       }
 
-      // 2. Pick up an existing endpoint if not in drawing mode
       if (!drawingMode) {
         let clickedAnchor: { drawingId: string; anchorKey: "anchorA" | "anchorB" | "anchorC" } | null = null;
         for (const d of fibDrawings) {
@@ -301,7 +322,6 @@ export default function FibChartPanel({
         return;
       }
 
-      // 3. Normal drawing mode
       if (!anchorA) {
         setAnchorA(clickedPoint);
         return;
@@ -350,7 +370,7 @@ export default function FibChartPanel({
     const getExtendedTime = (baseTime: number, drawing: FibDrawing): number => {
       let bars = 0;
       if (drawing.extendRight) {
-        bars = 200; // Extend 200 bars into the future to effectively reach the right edge
+        bars = 200;
       } else if (drawing.extendToBars && drawing.extendToBars > 0) {
         bars = drawing.extendToBars;
       }
@@ -372,7 +392,6 @@ export default function FibChartPanel({
     fibDrawings.forEach((drawing) => {
       const seriesList: ReturnType<ReturnType<typeof createChart>["addSeries"]>[] = [];
 
-      // Base trend line
       const baseLine = chart.addSeries(LineSeries, {
         color: "#7c3aed",
         lineWidth: 3,
@@ -382,16 +401,17 @@ export default function FibChartPanel({
         pointMarkersVisible: true,
         pointMarkersRadius: 5,
         autoscaleInfoProvider: () => ({
-            priceRange: null, // This series will now be ignored for autoscaling
+            priceRange: null,
         }),
       });
       seriesList.push(baseLine);
 
-      const levels = (drawing.type === 'extension' || drawing.type === 'projection') ? FIB_EXTENSION_LEVELS : FIB_RETRACEMENT_LEVELS;
+      const levels = (drawing.type === 'extension' || drawing.type === 'projection') 
+        ? fibLevels[drawing.type] 
+        : fibLevels.retracement;
 
       if (drawing.type === 'projection' && drawing.anchorC) {
         const anchorC = drawing.anchorC;
-        // For projections: A -> B defines trend, C is projection point
         const trendRange = drawing.anchorB.price - drawing.anchorA.price;
         const trendDuration = Math.max(Math.abs(drawing.anchorB.time - drawing.anchorA.time), 86400);
         
@@ -407,7 +427,7 @@ export default function FibChartPanel({
             priceLineVisible: false,
             lastValueVisible: false,
             autoscaleInfoProvider: () => ({
-                priceRange: null, // This series will now be ignored for autoscaling
+                priceRange: null,
             }),
           });
           
@@ -431,7 +451,6 @@ export default function FibChartPanel({
           { time: toChartTime(sortedPoints[2].time, interval), value: sortedPoints[2].price },
         ]);
       } else if (drawing.type === 'extension' && drawing.anchorC) {
-        // For extensions: A -> B defines trend, C is extension point
         const trendRange = drawing.anchorB.price - drawing.anchorA.price;
         const extensionStart = Math.min(drawing.anchorB.time, drawing.anchorC.time);
         const extensionEnd = Math.max(drawing.anchorB.time, drawing.anchorC.time);
@@ -445,7 +464,7 @@ export default function FibChartPanel({
             priceLineVisible: false,
             lastValueVisible: false,
             autoscaleInfoProvider: () => ({
-              priceRange: null, // This series will now be ignored for autoscaling
+              priceRange: null,
             }),
           });
           const s1 = toChartTime(extensionStart, interval);
@@ -473,7 +492,6 @@ export default function FibChartPanel({
               ]
         );
       } else {
-        // For retracements: levels between A and B
         const t1 = Math.min(drawing.anchorA.time, drawing.anchorB.time);
         const t2 = Math.max(drawing.anchorA.time, drawing.anchorB.time);
         
@@ -491,7 +509,7 @@ export default function FibChartPanel({
             priceLineVisible: false,
             lastValueVisible: false,
             autoscaleInfoProvider: () => ({
-              priceRange: null, // This series will now be ignored for autoscaling
+              priceRange: null,
           }),
           });
           line.setData(
@@ -520,9 +538,8 @@ export default function FibChartPanel({
 
       manualFibSeriesRef.current[drawing.id] = seriesList;
     });
-  }, [fibDrawings, interval]);
+  }, [fibDrawings, interval, fibLevels]);
 
-  // ── Update data whenever candles change ───────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current) return;
     if (candles.length === 0) {
@@ -574,9 +591,12 @@ export default function FibChartPanel({
     await api.clearFibDrawings(symbol);
   };
 
+  const handleSettingsSave = (newSettings: FibToolDefaults) => {
+    setFibSettings(newSettings);
+  };
+
   return (
     <div className="chart-panel">
-      {/* Header bar */}
       <div className={`chart-header${!linkInterval ? ' interval-unlinked' : ''}`} style={!linkInterval ? { background: '#fee2e2', borderBottomColor: '#fca5a5' } : {}}>
         <span className="chart-symbol">{symbol ?? "Select a symbol"}</span>
         <IntervalSelector value={interval} onChange={setInterval} />
@@ -597,183 +617,192 @@ export default function FibChartPanel({
         {syncAge && (
           <span className="chart-sync-age">Last sync: {syncAge}</span>
         )}
+        <button
+          className="chart-fib-settings-btn"
+          onClick={() => setShowSettings(true)}
+          title="Fib Settings"
+        >
+          ⚙
+        </button>
       </div>
 
       <div className="chart-content-wrapper">
         <div className="chart-main">
           <div className="fib-controls">
-        <button
-          type="button"
-          className="fib-action-button"
-          onClick={() => {
-            setDrawingMode(drawingMode === 'retracement' ? null : 'retracement');
-            setAnchorA(null);
-            setAnchorB(null);
-          }}
-        >
-          {drawingMode === 'retracement' ? "Cancel fib retracement" : "Draw fib retracement"}
-        </button>
-        <button
-          type="button"
-          className="fib-action-button"
-          onClick={() => {
-            setDrawingMode(drawingMode === 'extension' ? null : 'extension');
-            setAnchorA(null);
-            setAnchorB(null);
-          }}
-        >
-          {drawingMode === 'extension' ? "Cancel fib extension" : "Draw fib extension"}
-        </button>
-        <button
-          type="button"
-          className="fib-action-button"
-          onClick={() => {
-            setDrawingMode(drawingMode === 'projection' ? null : 'projection');
-            setAnchorA(null);
-            setAnchorB(null);
-          }}
-        >
-          {drawingMode === 'projection' ? "Cancel fib projection" : "Draw fib projection"}
-        </button>
-        <button
-          type="button"
-          className="fib-action-button"
-          onClick={handleClearDrawings}
-          disabled={fibDrawings.length === 0}
-        >
-          Clear drawings
-        </button>
-        <button
-          type="button"
-          className="fib-action-button"
-          onClick={() => setShowDrawings(!showDrawings)}
-          title="Shortcut: Shift + D"
-        >
-          {showDrawings ? "Hide panel" : "Show panel"}
-        </button>
-        {drawingMode && (
-          <span className="fib-hint">
-            {drawingMode === 'retracement'
-              ? (anchorA
-                  ? "Click the chart to place the end point."
-                  : "Click the chart to place the start point.")
-              : (anchorA && !anchorB
-                  ? "Click the chart to place the trend end point."
-                  : anchorB
-                  ? `Click the chart to place the ${drawingMode} point.`
-                  : "Click the chart to place the trend start point.")
-            }
-          </span>
-        )}
-        {movingEndpoint && (
-          <div className="fib-hint" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff0f6', color: '#c2255c', padding: '4px 12px', borderRadius: '4px' }}>
-            <span>Moving endpoint... Click chart to place.</span>
             <button
               type="button"
-              className="fib-action-button small"
-              onClick={() => setMovingEndpoint(null)}
-              style={{ margin: 0 }}
+              className="fib-action-button"
+              onClick={() => {
+                setDrawingMode(drawingMode === 'retracement' ? null : 'retracement');
+                setAnchorA(null);
+                setAnchorB(null);
+              }}
             >
-              Cancel
+              {drawingMode === 'retracement' ? "Cancel fib retracement" : "Draw fib retracement"}
             </button>
+            <button
+              type="button"
+              className="fib-action-button"
+              onClick={() => {
+                setDrawingMode(drawingMode === 'extension' ? null : 'extension');
+                setAnchorA(null);
+                setAnchorB(null);
+              }}
+            >
+              {drawingMode === 'extension' ? "Cancel fib extension" : "Draw fib extension"}
+            </button>
+            <button
+              type="button"
+              className="fib-action-button"
+              onClick={() => {
+                setDrawingMode(drawingMode === 'projection' ? null : 'projection');
+                setAnchorA(null);
+                setAnchorB(null);
+              }}
+            >
+              {drawingMode === 'projection' ? "Cancel fib projection" : "Draw fib projection"}
+            </button>
+            <button
+              type="button"
+              className="fib-action-button"
+              onClick={handleClearDrawings}
+              disabled={fibDrawings.length === 0}
+            >
+              Clear drawings
+            </button>
+            <button
+              type="button"
+              className="fib-action-button"
+              onClick={() => setShowDrawings(!showDrawings)}
+              title="Shortcut: Shift + D"
+            >
+              {showDrawings ? "Hide panel" : "Show panel"}
+            </button>
+            {drawingMode && (
+              <span className="fib-hint">
+                {drawingMode === 'retracement'
+                  ? (anchorA
+                      ? "Click the chart to place the end point."
+                      : "Click the chart to place the start point.")
+                  : (anchorA && !anchorB
+                      ? "Click the chart to place the trend end point."
+                      : anchorB
+                      ? `Click the chart to place the ${drawingMode} point.`
+                      : "Click the chart to place the trend start point.")
+                }
+              </span>
+            )}
+            {movingEndpoint && (
+              <div className="fib-hint" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff0f6', color: '#c2255c', padding: '4px 12px', borderRadius: '4px' }}>
+                <span>Moving endpoint... Click chart to place.</span>
+                <button
+                  type="button"
+                  className="fib-action-button small"
+                  onClick={() => setMovingEndpoint(null)}
+                  style={{ margin: 0 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
+
+          {warning && (
+            <div className="chart-warning">
+              ⚠ {warning}
+            </div>
           )}
+
+          <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
+            <ChartNotes
+              symbol={symbol}
+              panelType="fib"
+              chartRef={chartRef}
+              seriesRef={seriesRef}
+              candles={candles}
+            />
+            {isLoading && (
+              <div className="chart-loading-overlay">
+                <span className="spinner" />
+                <span>Loading chart…</span>
+              </div>
+            )}
+            {!isLoading && !symbol && (
+              <div className="chart-placeholder">
+                <span>Select a symbol from the watchlist →</span>
+              </div>
+            )}
+            {!isLoading && symbol && candles.length === 0 && !isLoading && (
+              <div className="chart-placeholder">
+                <span>No data available for {symbol}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Warning banner */}
-        {warning && (
-          <div className="chart-warning">
-            ⚠ {warning}
+        {showDrawings && (
+          <div className="drawings-sidebar" style={{ width: '300px', borderLeft: '1px solid #ddd', padding: '10px' }}>
+            <div className="fib-drawing-list">
+              <strong>Saved drawings</strong>
+              {fibDrawings.map((drawing) => (
+                <div key={drawing.id} className="fib-drawing-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>
+                      Fib {drawing.type}: 
+                      {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
+                      {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
+                      {(drawing.type === 'extension' || drawing.type === 'projection') && drawing.anchorC && (
+                        <> →
+                          {new Date(drawing.anchorC.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorC.price}
+                        </>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="fib-action-button small"
+                      onClick={() => handleDeleteDrawing(drawing.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <div style={{ marginTop: '4px', display: 'flex', gap: '12px', fontSize: '0.85em', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!drawing.extendRight}
+                        onChange={(e) => handleUpdateDrawing(drawing.id, { extendRight: e.target.checked })}
+                      />
+                      Extend Right Edge
+                    </label>
+                    {!drawing.extendRight && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        Extend by (bars):
+                        <input
+                          type="number"
+                          min="0"
+                          style={{ width: '50px' }}
+                          value={drawing.extendToBars ?? 0}
+                          onChange={(e) => handleUpdateDrawing(drawing.id, { extendToBars: parseInt(e.target.value) || 0 })}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-
-        {/* Chart area */}
-        <div className="chart-canvas-container" ref={containerRef} style={{ position: "relative" }}>
-          <ChartNotes
-            symbol={symbol}
-            panelType="fib"
-            chartRef={chartRef}
-            seriesRef={seriesRef}
-            candles={candles}
-          />
-          {isLoading && (
-            <div className="chart-loading-overlay">
-              <span className="spinner" />
-              <span>Loading chart…</span>
-            </div>
-          )}
-          {!isLoading && !symbol && (
-            <div className="chart-placeholder">
-              <span>Select a symbol from the watchlist →</span>
-            </div>
-          )}
-          {!isLoading && symbol && candles.length === 0 && !isLoading && (
-            <div className="chart-placeholder">
-              <span>No data available for {symbol}</span>
-            </div>
-          )}
-        </div>
       </div>
 
-      {showDrawings && (
-        <div className="drawings-sidebar" style={{ width: '300px', borderLeft: '1px solid #ddd', padding: '10px' }}>
-          <div className="fib-drawing-list">
-            <strong>Saved drawings</strong>
-            {fibDrawings.map((drawing) => (
-              <div key={drawing.id} className="fib-drawing-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>
-                    Fib {drawing.type}: 
-                    {new Date(drawing.anchorA.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorA.price} →
-                    {new Date(drawing.anchorB.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorB.price}
-                    {(drawing.type === 'extension' || drawing.type === 'projection') && drawing.anchorC && (
-                      <> →
-                        {new Date(drawing.anchorC.time * 1000).toISOString().slice(0, 10)} @ {drawing.anchorC.price}
-                      </>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    className="fib-action-button small"
-                    onClick={() => handleDeleteDrawing(drawing.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div style={{ marginTop: '4px', display: 'flex', gap: '12px', fontSize: '0.85em', alignItems: 'center' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!drawing.extendRight}
-                      onChange={(e) => handleUpdateDrawing(drawing.id, { extendRight: e.target.checked })}
-                    />
-                    Extend Right Edge
-                  </label>
-                  {!drawing.extendRight && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      Extend by (bars):
-                      <input
-                        type="number"
-                        min="0"
-                        style={{ width: '50px' }}
-                        value={drawing.extendToBars ?? 0}
-                        onChange={(e) => handleUpdateDrawing(drawing.id, { extendToBars: parseInt(e.target.value) || 0 })}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {showSettings && (
+        <FibSettingsWindow
+          onClose={() => setShowSettings(false)}
+          onSave={handleSettingsSave}
+        />
       )}
-    </div>
     </div>
   );
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 
 function convertClickTime(time: number | string): number | null {
   if (typeof time === "number") {
@@ -802,10 +831,9 @@ function parseFibDrawingPayload(raw: string | null): FibDrawing[] {
       drawings = parsed;
     }
 
-    // Ensure backward compatibility - old drawings don't have type field
     return drawings.map(drawing => ({
       ...drawing,
-      type: drawing.type || 'retracement', // Default to retracement for old drawings
+      type: drawing.type || 'retracement',
     })) as FibDrawing[];
   } catch {
     // ignore invalid payload
@@ -825,5 +853,3 @@ function formatAge(isoString: string): string {
     return "";
   }
 }
-
-

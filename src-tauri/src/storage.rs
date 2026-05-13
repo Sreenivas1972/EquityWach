@@ -4,7 +4,7 @@ use chrono::{Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, Result as SqlResult};
 
 use crate::models::{
-    CandleData, EMASettings, FetchSettings, UpstoxInstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
+    CandleData, EMASettings, FetchSettings, FibToolDefaults, UpstoxInstrumentInfo, UpstoxConfig, LastSelection, RetentionSettings,
     WatchlistEntry,
 };
 
@@ -43,6 +43,9 @@ fn fetch_settings_path() -> PathBuf {
 }
 fn ema_settings_path() -> PathBuf {
     get_app_data_dir().join("ema_settings.json")
+}
+fn fib_settings_path() -> PathBuf {
+    get_app_data_dir().join("fib_settings.json")
 }
 
 // ─── Database ────────────────────────────────────────────────────────────────
@@ -638,6 +641,14 @@ pub fn load_ema_settings() -> EMASettings {
 
 pub fn save_ema_settings(s: &EMASettings) -> Result<(), String> {
     write_json(&ema_settings_path(), s)
+}
+
+pub fn load_fib_settings() -> FibToolDefaults {
+    read_json(&fib_settings_path()).unwrap_or_default()
+}
+
+pub fn save_fib_settings(s: &FibToolDefaults) -> Result<(), String> {
+    write_json(&fib_settings_path(), s)
 }
 
 // ─── Watchlists ──────────────────────────────────────────────────────────────

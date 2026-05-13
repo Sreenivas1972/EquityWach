@@ -134,3 +134,14 @@ export interface EMASettings {
   ema2_color: string;
   ema3_color: string;
 }
+
+export interface FibLevelDefinition {
+  value: number;
+  color: string;
+}
+
+export interface FibToolDefaults {
+  retracement: FibLevelDefinition[];
+  extension: FibLevelDefinition[];
+  projection: FibLevelDefinition[];
+}

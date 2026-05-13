@@ -210,3 +210,49 @@ impl Default for EMASettings {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FibLevelDefinition {
+    pub value: f64,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FibToolDefaults {
+    pub retracement: Vec<FibLevelDefinition>,
+    pub extension: Vec<FibLevelDefinition>,
+    pub projection: Vec<FibLevelDefinition>,
+}
+
+impl Default for FibToolDefaults {
+    fn default() -> Self {
+        FibToolDefaults {
+            retracement: vec![
+                FibLevelDefinition { value: 0.0, color: "#868e96".to_string() },
+                FibLevelDefinition { value: 0.236, color: "#1c7ed6".to_string() },
+                FibLevelDefinition { value: 0.382, color: "#12b886".to_string() },
+                FibLevelDefinition { value: 0.5, color: "#f59f00".to_string() },
+                FibLevelDefinition { value: 0.618, color: "#e03131".to_string() },
+                FibLevelDefinition { value: 0.786, color: "#ae3ec9".to_string() },
+                FibLevelDefinition { value: 1.0, color: "#495057".to_string() },
+            ],
+            extension: vec![
+                FibLevelDefinition { value: 0.0, color: "#868e96".to_string() },
+                FibLevelDefinition { value: 0.618, color: "#1c7ed6".to_string() },
+                FibLevelDefinition { value: 1.0, color: "#12b886".to_string() },
+                FibLevelDefinition { value: 1.272, color: "#f59f00".to_string() },
+                FibLevelDefinition { value: 1.618, color: "#e03131".to_string() },
+                FibLevelDefinition { value: 2.0, color: "#ae3ec9".to_string() },
+                FibLevelDefinition { value: 2.618, color: "#7048e8".to_string() },
+            ],
+            projection: vec![
+                FibLevelDefinition { value: 0.618, color: "#1c7ed6".to_string() },
+                FibLevelDefinition { value: 1.0, color: "#12b886".to_string() },
+                FibLevelDefinition { value: 1.272, color: "#f59f00".to_string() },
+                FibLevelDefinition { value: 1.618, color: "#e03131".to_string() },
+                FibLevelDefinition { value: 2.0, color: "#ae3ec9".to_string() },
+                FibLevelDefinition { value: 2.618, color: "#7048e8".to_string() },
+            ],
+        }
+    }
+}
