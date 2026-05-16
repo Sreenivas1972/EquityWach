@@ -1,4 +1,4 @@
-use chrono::{Datelike, Timelike, Duration, TimeZone, Utc};
+use chrono::{Datelike, Timelike, Duration, TimeZone, Local};
 use serde::Deserialize;
 use rusqlite::params;
 use std::collections::HashMap;
@@ -163,12 +163,12 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
 
     let from = match latest_ts {
         Some(ts) => {
-            let base = Utc.timestamp_opt(ts, 0).single().unwrap_or_else(Utc::now);
+            let base = Local.timestamp_opt(ts, 0).single().unwrap_or_else(Local::now);
             base - refresh_backfill_duration(&interval)
         }
         None => fetch_from(&interval, &fetch_settings),
     };
-    let to = Utc::now();
+    let to = Local::now();
 
     let new_candles = match fetch_candles(&instrument_key, &access_token, from, to, &interval).await {
         Ok(c) => c,
@@ -210,7 +210,7 @@ pub async fn get_chart_data(symbol: &str, interval: &str) -> Result<ChartDataRes
     Ok(ChartDataResponse {
         candles: all_candles,
         freshness: freshness.to_string(),
-        last_sync: Some(storage::ts_to_rfc3339(Utc::now().timestamp())),
+        last_sync: Some(storage::ts_to_rfc3339(Local::now().timestamp())),
         warning: None,
     })
 }
@@ -270,7 +270,7 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
         .map_err(|e| e.to_string())?;
 
     let from = fetch_from(&interval, &fetch_settings);
-    let to = Utc::now();
+    let to = Local::now();
 
     let new_candles = match fetch_candles(&instrument_key, &access_token, from, to, &interval).await {
         Ok(c) => c,
@@ -302,7 +302,7 @@ pub async fn refresh_chart_data(symbol: &str, interval: &str) -> Result<ChartDat
     Ok(ChartDataResponse {
         candles: all_candles,
         freshness: "network_fetched".to_string(),
-        last_sync: Some(storage::ts_to_rfc3339(Utc::now().timestamp())),
+        last_sync: Some(storage::ts_to_rfc3339(Local::now().timestamp())),
         warning: None,
     })
 }
@@ -337,7 +337,7 @@ pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<Piv
         )
     })?;
 
-    let now = Utc::now();
+    let now = Local::now();
     let current_period_start = if interval_str == "day" {
         month_start(now)
     } else {
@@ -417,8 +417,8 @@ pub async fn get_pivot_source(symbol: &str, interval: &str) -> Result<Option<Piv
 async fn get_current_period_first_trading_day(
     symbol: &str,
     _interval: &str,
-    period_start: chrono::DateTime<Utc>,
-    now: chrono::DateTime<Utc>,
+    period_start: chrono::DateTime<Local>,
+    now: chrono::DateTime<Local>,
 ) -> Result<i64, String> {
     let end_ts = now.timestamp();
     let start_ts = period_start.timestamp();
@@ -444,16 +444,16 @@ async fn get_current_period_first_trading_day(
     Ok(result.unwrap_or(start_ts))
 }
 
-fn month_start(dt: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+fn month_start(dt: chrono::DateTime<Local>) -> chrono::DateTime<Local> {
     dt.with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
 }
 
-fn quarter_start(dt: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+fn quarter_start(dt: chrono::DateTime<Local>) -> chrono::DateTime<Local> {
     let quarter_month = ((dt.month() - 1) / 3) * 3 + 1;
     dt.with_month(quarter_month).unwrap().with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
 }
 
-fn previous_month_start(current_month_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+fn previous_month_start(current_month_start: chrono::DateTime<Local>) -> chrono::DateTime<Local> {
     let year = current_month_start.year();
     let month = current_month_start.month();
     let target = if month == 1 {
@@ -464,7 +464,7 @@ fn previous_month_start(current_month_start: chrono::DateTime<Utc>) -> chrono::D
     target.with_day(1).unwrap().with_hour(0).unwrap().with_minute(0).unwrap().with_second(0).unwrap()
 }
 
-fn previous_quarter_start(current_quarter_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+fn previous_quarter_start(current_quarter_start: chrono::DateTime<Local>) -> chrono::DateTime<Local> {
     let year = current_quarter_start.year();
     let month = current_quarter_start.month();
     let target = if month <= 3 {
@@ -478,8 +478,8 @@ fn previous_quarter_start(current_quarter_start: chrono::DateTime<Utc>) -> chron
 async fn load_or_fetch_day_candles(
     symbol: &str,
     instrument_key: String,
-    from: chrono::DateTime<Utc>,
-    to: chrono::DateTime<Utc>,
+    from: chrono::DateTime<Local>,
+    to: chrono::DateTime<Local>,
 ) -> Result<Vec<CandleData>, String> {
     let symbol_str = symbol.to_string();
     let from_ts = from.timestamp();
@@ -541,8 +541,8 @@ fn compute_high_low_close(candles: &[CandleData]) -> Option<(f64, f64, f64)> {
 async fn fetch_candles(
     instrument_key: &str,
     access_token: &str,
-    from: chrono::DateTime<Utc>,
-    to: chrono::DateTime<Utc>,
+    from: chrono::DateTime<Local>,
+    to: chrono::DateTime<Local>,
     interval: &str,
 ) -> Result<Vec<CandleData>, String> {
     let from_str = from.format("%Y-%m-%d").to_string();
@@ -600,7 +600,7 @@ async fn fetch_candles(
         None => return Ok(Vec::new()),
     };
 
-    let candles: Vec<CandleData> = candles
+    let mut candles: Vec<CandleData> = candles
         .iter()
         .filter_map(|c| {
             if c.len() < 6 {
@@ -621,14 +621,8 @@ async fn fetch_candles(
         })
         .collect();
 
-    let mut result = match interval {
-        "week" => aggregate_candles(candles, "week"),
-        "month" => aggregate_candles(candles, "month"),
-        _ => candles,
-    };
-    
-    result.sort_by_key(|c| c.time);
-    Ok(result)
+    candles.sort_by_key(|c| c.time);
+    Ok(candles)
 }
 
 fn interval_to_upstox(interval: &str) -> (&'static str, &'static str) {
@@ -658,8 +652,8 @@ fn parse_symbol(s: &str) -> (String, String) {
     }
 }
 
-fn fetch_from(interval: &str, s: &FetchSettings) -> chrono::DateTime<Utc> {
-    let now = Utc::now();
+fn fetch_from(interval: &str, s: &FetchSettings) -> chrono::DateTime<Local> {
+    let now = Local::now();
     match interval {
         "week" => now - Duration::weeks(s.week_fetch_weeks as i64),
         "month" => now - Duration::days(s.month_fetch_months as i64 * 30),
@@ -673,82 +667,6 @@ fn refresh_backfill_duration(interval: &str) -> Duration {
         "month" => Duration::days(31),
         _ => Duration::zero(),
     }
-}
-
-fn aggregate_candles(mut candles: Vec<CandleData>, interval: &str) -> Vec<CandleData> {
-    if candles.is_empty() {
-        return candles;
-    }
-
-    candles.sort_by_key(|c| c.time);
-
-    let mut out: Vec<CandleData> = Vec::new();
-    let mut current_bucket: Option<i64> = None;
-    let mut current: Option<CandleData> = None;
-
-    for c in candles {
-        let bucket = bucket_start_ts(c.time, interval).unwrap_or(c.time);
-
-        match (current_bucket, current.take()) {
-            (Some(b), Some(mut agg)) if b == bucket => {
-                if c.high > agg.high {
-                    agg.high = c.high;
-                }
-                if c.low < agg.low {
-                    agg.low = c.low;
-                }
-                agg.close = c.close;
-                agg.volume = agg.volume.saturating_add(c.volume);
-                current = Some(agg);
-            }
-            (_, Some(prev)) => {
-                out.push(prev);
-                current_bucket = Some(bucket);
-                current = Some(CandleData {
-                    time: bucket,
-                    open: c.open,
-                    high: c.high,
-                    low: c.low,
-                    close: c.close,
-                    volume: c.volume,
-                });
-            }
-            (_, None) => {
-                current_bucket = Some(bucket);
-                current = Some(CandleData {
-                    time: bucket,
-                    open: c.open,
-                    high: c.high,
-                    low: c.low,
-                    close: c.close,
-                    volume: c.volume,
-                });
-            }
-        }
-    }
-
-    if let Some(last) = current {
-        out.push(last);
-    }
-
-    out
-}
-
-fn bucket_start_ts(ts: i64, interval: &str) -> Option<i64> {
-    let dt = Utc.timestamp_opt(ts, 0).single()?;
-    let date = dt.date_naive();
-
-    let start = match interval {
-        "week" => {
-            let offset = date.weekday().num_days_from_monday() as i64;
-            date - Duration::days(offset)
-        }
-        "month" => date.with_day(1)?,
-        _ => date,
-    };
-
-    let bucket_dt = start.and_hms_opt(0, 0, 0)?;
-    Some(bucket_dt.and_utc().timestamp())
 }
 
 fn serve_cached_or_error(
