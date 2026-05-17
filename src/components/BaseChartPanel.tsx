@@ -971,6 +971,7 @@ function BaseChartPanelComponent({
           chartRef={chartRef}
           seriesRef={seriesRef}
           candles={candles}
+          interval={interval}
         />
         {isLoading && (
           <div className="chart-loading-overlay">

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UTCTimestamp } from "lightweight-charts";
 import { api } from "../services/tauriApi";
-import type { ChartNote, CandleData } from "../types";
+import type { ChartNote, CandleData, Interval } from "../types";
+import { toChartTime } from "../windows/shared";
 
 interface ChartNotesProps {
   symbol: string | null;
@@ -9,6 +10,7 @@ interface ChartNotesProps {
   chartRef: React.MutableRefObject<any>;
   seriesRef: React.MutableRefObject<any>;
   candles: CandleData[];
+  interval?: Interval;
 }
 
 export default function ChartNotes({
@@ -17,6 +19,7 @@ export default function ChartNotes({
   chartRef,
   seriesRef,
   candles,
+  interval = 'day',
 }: ChartNotesProps) {
   const [notes, setNotes] = useState<ChartNote[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
@@ -248,7 +251,8 @@ export default function ChartNotes({
     const positions: { id: string; anchorX: number; anchorY: number; noteX: number; noteY: number }[] = [];
     
     notes.forEach((note) => {
-      const anchorX = timeScale.timeToCoordinate(note.anchor_time as UTCTimestamp);
+      const chartTime = toChartTime(note.anchor_time, interval);
+      const anchorX = timeScale.timeToCoordinate(chartTime as UTCTimestamp);
       const anchorY = series.priceToCoordinate(note.anchor_price);
       
       if (anchorX === null || anchorY === null || anchorY === undefined || 
@@ -261,7 +265,7 @@ export default function ChartNotes({
     });
     
     setNotePositions(positions);
-  }, [notes, candles, chartRef, seriesRef]);
+  }, [notes, candles, chartRef, seriesRef, interval]);
 
   useEffect(() => {
     const rafId = requestAnimationFrame(calculateNotePositions);
